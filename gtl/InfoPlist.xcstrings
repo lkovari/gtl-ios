@@ -1,0 +1,86 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "CFBundleDisplayName" : {
+      "comment" : "Bundle display name",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GPS Track Logger"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GTL GPS útvonal napló"
+          }
+        }
+      }
+    },
+    "CFBundleName" : {
+      "comment" : "Bundle name",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "gtl"
+          }
+        }
+      }
+    },
+    "NSLocationAlwaysAndWhenInUseUsageDescription" : {
+      "comment" : "Privacy - Location Always and When In Use Usage Description",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GTL records your route on this phone, including while the screen is locked, so the track stays continuous."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A GTL a telefonon rögzíti az útvonalat akkor is, ha a képernyő zárolva van, hogy a nyomvonal folyamatos maradjon."
+          }
+        }
+      }
+    },
+    "NSLocationWhenInUseUsageDescription" : {
+      "comment" : "Privacy - Location When In Use Usage Description",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GTL uses your location to record the route and show it on the map."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A GTL a helyzetedet az útvonal rögzítéséhez és a térképen való mutatáshoz használja."
+          }
+        }
+      }
+    },
+    "NSMotionUsageDescription" : {
+      "comment" : "Privacy - Motion Usage Description",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GTL reads motion and barometric pressure to store lean angle and barometric altitude with the route."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A GTL a mozgást és a légnyomást a dőlésszög és a barometrikus magasság rögzítéséhez olvassa."
+          }
+        }
+      }
+    }
+  },
+  "version" : "1.0"
+}

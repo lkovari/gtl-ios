@@ -1,0 +1,553 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		B1000000000000000000000E /* MapLibre in Frameworks */ = {isa = PBXBuildFile; productRef = B1000000000000000000000D /* MapLibre */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		B10000000000000000000031 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = B10000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = B10000000000000000000002;
+			remoteInfo = gtl;
+		};
+		B10000000000000000000032 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = B10000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = B10000000000000000000002;
+			remoteInfo = gtl;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		B10000000000000000000008 /* gtl.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = gtl.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		B10000000000000000000009 /* gtlTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = gtlTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		B1000000000000000000000A /* gtlUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = gtlUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		B1000000000000000000000B /* Exceptions for "gtl" folder in "gtl" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = B10000000000000000000002 /* gtl */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		B10000000000000000000005 /* gtl */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				B1000000000000000000000B /* Exceptions for "gtl" folder in "gtl" target */,
+			);
+			path = gtl;
+			sourceTree = "<group>";
+		};
+		B10000000000000000000006 /* gtlTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = gtlTests;
+			sourceTree = "<group>";
+		};
+		B10000000000000000000007 /* gtlUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = gtlUITests;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		B10000000000000000000021 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B1000000000000000000000E /* MapLibre in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B10000000000000000000022 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B10000000000000000000023 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		B1000000000000000000001C = {
+			isa = PBXGroup;
+			children = (
+				B10000000000000000000005 /* gtl */,
+				B10000000000000000000006 /* gtlTests */,
+				B10000000000000000000007 /* gtlUITests */,
+				B1000000000000000000001D /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		B1000000000000000000001D /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				B10000000000000000000008 /* gtl.app */,
+				B10000000000000000000009 /* gtlTests.xctest */,
+				B1000000000000000000000A /* gtlUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		B10000000000000000000002 /* gtl */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B10000000000000000000011 /* Build configuration list for PBXNativeTarget "gtl" */;
+			buildPhases = (
+				B10000000000000000000024 /* Sources */,
+				B10000000000000000000021 /* Frameworks */,
+				B10000000000000000000025 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				B10000000000000000000005 /* gtl */,
+			);
+			name = gtl;
+			packageProductDependencies = (
+				B1000000000000000000000D /* MapLibre */,
+			);
+			productName = gtl;
+			productReference = B10000000000000000000008 /* gtl.app */;
+			productType = "com.apple.product-type.application";
+		};
+		B10000000000000000000003 /* gtlTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B10000000000000000000012 /* Build configuration list for PBXNativeTarget "gtlTests" */;
+			buildPhases = (
+				B10000000000000000000026 /* Sources */,
+				B10000000000000000000022 /* Frameworks */,
+				B10000000000000000000027 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				B10000000000000000000033 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				B10000000000000000000006 /* gtlTests */,
+			);
+			name = gtlTests;
+			packageProductDependencies = (
+			);
+			productName = gtlTests;
+			productReference = B10000000000000000000009 /* gtlTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		B10000000000000000000004 /* gtlUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B10000000000000000000013 /* Build configuration list for PBXNativeTarget "gtlUITests" */;
+			buildPhases = (
+				B10000000000000000000028 /* Sources */,
+				B10000000000000000000023 /* Frameworks */,
+				B10000000000000000000029 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				B10000000000000000000034 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				B10000000000000000000007 /* gtlUITests */,
+			);
+			name = gtlUITests;
+			packageProductDependencies = (
+			);
+			productName = gtlUITests;
+			productReference = B1000000000000000000000A /* gtlUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		B10000000000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2700;
+				LastUpgradeCheck = 2700;
+				TargetAttributes = {
+					B10000000000000000000002 = {
+						CreatedOnToolsVersion = 27.0;
+					};
+					B10000000000000000000003 = {
+						CreatedOnToolsVersion = 27.0;
+						TestTargetID = B10000000000000000000002;
+					};
+					B10000000000000000000004 = {
+						CreatedOnToolsVersion = 27.0;
+						TestTargetID = B10000000000000000000002;
+					};
+				};
+			};
+			buildConfigurationList = B10000000000000000000010 /* Build configuration list for PBXProject "gtl" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+				hu,
+			);
+			mainGroup = B1000000000000000000001C;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				B1000000000000000000000C /* XCRemoteSwiftPackageReference "maplibre-gl-native-distribution" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = B1000000000000000000001D /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				B10000000000000000000002 /* gtl */,
+				B10000000000000000000003 /* gtlTests */,
+				B10000000000000000000004 /* gtlUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		B10000000000000000000025 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B10000000000000000000027 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B10000000000000000000029 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		B10000000000000000000024 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B10000000000000000000026 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B10000000000000000000028 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		B10000000000000000000033 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = B10000000000000000000002 /* gtl */;
+			targetProxy = B10000000000000000000031 /* PBXContainerItemProxy */;
+		};
+		B10000000000000000000034 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = B10000000000000000000002 /* gtl */;
+			targetProxy = B10000000000000000000032 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		B10000000000000000000014 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		B10000000000000000000015 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		B10000000000000000000016 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 33;
+				DEVELOPMENT_TEAM = 2885GLR3V7;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = gtl/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "GPS Track Logger";
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.navigation";
+				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "GTL records your route on this phone, including while the screen is locked, so the track stays continuous.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "GTL uses your location to record the route and show it on the map.";
+				INFOPLIST_KEY_NSMotionUsageDescription = "GTL reads motion and barometric pressure to store lean angle and barometric altitude with the route.";
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UIRequiresFullScreen = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 2.0.15;
+				OTHER_LDFLAGS = "-lsqlite3";
+				PRODUCT_BUNDLE_IDENTIFIER = com.lkovari.mobile.apps.gtl;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		B10000000000000000000017 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = YES;
+				CURRENT_PROJECT_VERSION = 33;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = 2885GLR3V7;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = gtl/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "GPS Track Logger";
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.navigation";
+				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "GTL records your route on this phone, including while the screen is locked, so the track stays continuous.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "GTL uses your location to record the route and show it on the map.";
+				INFOPLIST_KEY_NSMotionUsageDescription = "GTL reads motion and barometric pressure to store lean angle and barometric altitude with the route.";
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UIRequiresFullScreen = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 2.0.15;
+				OTHER_LDFLAGS = "-lsqlite3";
+				PRODUCT_BUNDLE_IDENTIFIER = com.lkovari.mobile.apps.gtl;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+		B10000000000000000000018 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 33;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 2.0.15;
+				PRODUCT_BUNDLE_IDENTIFIER = com.lkovari.mobile.apps.gtlTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/gtl.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/gtl";
+			};
+			name = Debug;
+		};
+		B10000000000000000000019 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 33;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 2.0.15;
+				PRODUCT_BUNDLE_IDENTIFIER = com.lkovari.mobile.apps.gtlTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/gtl.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/gtl";
+			};
+			name = Release;
+		};
+		B1000000000000000000001A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 33;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 2.0.15;
+				PRODUCT_BUNDLE_IDENTIFIER = com.lkovari.mobile.apps.gtlUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_TARGET_NAME = gtl;
+			};
+			name = Debug;
+		};
+		B1000000000000000000001B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 33;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 2.0.15;
+				PRODUCT_BUNDLE_IDENTIFIER = com.lkovari.mobile.apps.gtlUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_TARGET_NAME = gtl;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		B10000000000000000000010 /* Build configuration list for PBXProject "gtl" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B10000000000000000000014 /* Debug */,
+				B10000000000000000000015 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		B10000000000000000000011 /* Build configuration list for PBXNativeTarget "gtl" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B10000000000000000000016 /* Debug */,
+				B10000000000000000000017 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		B10000000000000000000012 /* Build configuration list for PBXNativeTarget "gtlTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B10000000000000000000018 /* Debug */,
+				B10000000000000000000019 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		B10000000000000000000013 /* Build configuration list for PBXNativeTarget "gtlUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B1000000000000000000001A /* Debug */,
+				B1000000000000000000001B /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		B1000000000000000000000C /* XCRemoteSwiftPackageReference "maplibre-gl-native-distribution" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/maplibre/maplibre-gl-native-distribution";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 6.8.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		B1000000000000000000000D /* MapLibre */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B1000000000000000000000C /* XCRemoteSwiftPackageReference "maplibre-gl-native-distribution" */;
+			productName = MapLibre;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = B10000000000000000000001 /* Project object */;
+}

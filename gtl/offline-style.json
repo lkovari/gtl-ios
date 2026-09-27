@@ -1,0 +1,12 @@
+{
+  "version": 8,
+  "name": "gtl-offline",
+  "sources": {},
+  "layers": [
+    {
+      "id": "background",
+      "type": "background",
+      "paint": { "background-color": "#f3efe4" }
+    }
+  ]
+}
