@@ -315,6 +315,12 @@ A KMZ-t a Google Earthben megnyitva a vonal kiemelkedik a terepből. Repülésn�
 
 Megosztás a Mentett útvonalakból. A fájl a Fájlok appban van: A(z) iPhone-omon → GPS Track Logger → Exports.
 
+### KMZ indulás, szünet és megállás ikon
+
+A KMZ az indulás, a szünet és a megállás jelét mentéskor rakja össze, egy-egy 1×1-es PNG-ként. A PNG ellenőrző összegét négy bájtként kell a fájlba írni. Régen ez `UInt8(self >> 24)` és a többi eltolás volt, csonkítás nélkül. A Swift leállítja a folyamatot, ha a 32 bites szám nem fér bele egy bájtba. Ez a főszálon történt, a KMZ mentése közben. Az iOS öt másodperc után bezárta az appot, mert a főszál nem fejezte be a kilépést.
+
+Most mind a négy bájt `truncatingIfNeeded` átalakítással készül: a felső bitek leesnek, a folyamat nem áll meg. A `testGpxAndMarkers` ellenőrzi, hogy a zöld, a borostyán és a piros ikon PNG-fejléccel indul. A telefonon lévő 2.0.15 (33) buildben a régi átalakítás van. Az új csak a következő telepítés után érvényes.
+
 ### Útvonal a koppintott pontig
 
 Koppints a térképre, majd az Útvonalra. A MapKit gyalog, kerékpárral vagy autóval rajzol utat a saját fixtől addig a pontig. A túra és a futás gyalog, a kerékpár kerékpárral, az autó és a motor autóval megy. A repülőnek és a hajónak nincs illő úthálózata, ezért a kártya Gyalog, Kerékpár és Autó sort ad.

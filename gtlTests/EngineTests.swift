@@ -213,6 +213,10 @@ final class EngineTests: XCTestCase {
         XCTAssertTrue(flat.contains("<tessellate>1</tessellate>"))
         let kmz = KmzExporter.pack(kml: kml, files: ["icons/play.png": Data([1, 2, 3])])
         XCTAssertEqual(kmz.prefix(2), Data([0x50, 0x4b]))
+        let png = MarkerIcon.green
+        XCTAssertEqual(png.prefix(8), Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]))
+        XCTAssertEqual(MarkerIcon.amber.prefix(8), png.prefix(8))
+        XCTAssertEqual(MarkerIcon.red.prefix(8), png.prefix(8))
     }
 
     func testUnitsAndSearch() {

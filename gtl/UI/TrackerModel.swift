@@ -342,6 +342,16 @@ final class TrackerModel {
         rebuildSpeedRuns()
     }
 
+    func gpsEventsDump(for session: TrackSession) async -> String {
+        let events: [GpsEvent]
+        if let database {
+            events = (try? await database.events(sessionId: session.id)) ?? []
+        } else {
+            events = []
+        }
+        return GpsEventsDump.text(session: session, events: events)
+    }
+
     func showSession(_ id: Int64) {
         selectedSessionId = id
         mapCleared = false
@@ -1257,6 +1267,11 @@ enum MarkerIcon {
 
 private extension UInt32 {
     var bigEndianBytes: [UInt8] {
-        [UInt8(self >> 24), UInt8(self >> 16), UInt8(self >> 8), UInt8(self)]
+        [
+            UInt8(truncatingIfNeeded: self >> 24),
+            UInt8(truncatingIfNeeded: self >> 16),
+            UInt8(truncatingIfNeeded: self >> 8),
+            UInt8(truncatingIfNeeded: self)
+        ]
     }
 }

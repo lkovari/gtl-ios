@@ -187,27 +187,45 @@ struct MapDownloadScreen: View {
     }
 }
 
+private struct GpsEventsPage: Hashable {
+    var sessionId: Int64
+    var text: String
+}
+
 struct TracksScreen: View {
     @Bindable var model: TrackerModel
     @State private var selected: Set<Int64> = []
     @State private var sharing = false
+    @State private var dumpTaps: [Int64: TripleTapGate] = [:]
+    @State private var dumpPage: GpsEventsPage?
     var body: some View {
         List {
             ForEach(model.sessions) { session in
-                Button {
-                    if selected.contains(session.id) { selected.remove(session.id) } else { selected.insert(session.id) }
-                } label: {
-                    HStack {
+                HStack {
+                    Button {
+                        toggle(session.id)
+                    } label: {
                         Image(systemName: selected.contains(session.id) ? "checkmark.circle.fill" : "circle")
-                        VStack(alignment: .leading) {
-                            Text(sessionTitle(session.startedAt))
-                            Text(session.usageType).font(.caption).foregroundStyle(.secondary)
-                        }
                     }
+                    .buttonStyle(.borderless)
+                    VStack(alignment: .leading) {
+                        Text(sessionTitle(session.startedAt))
+                        Text(session.usageType).font(.caption).foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        toggle(session.id)
+                        registerDumpTap(session)
+                    }
+                    .accessibilityIdentifier("savedTrackDate.\(session.id)")
                 }
             }
         }
         .navigationTitle(L10n.text("Saved tracks", "Mentett útvonalak"))
+        .navigationDestination(item: $dumpPage) { page in
+            GpsEventsScreen(text: page.text)
+        }
         .toolbar {
             ToolbarItem(placement: .bottomBar) {
                 Button(L10n.text("Show on map", "Térképen")) {
@@ -240,9 +258,161 @@ struct TracksScreen: View {
         }
     }
 
+    private func toggle(_ id: Int64) {
+        if selected.contains(id) { selected.remove(id) } else { selected.insert(id) }
+    }
+
+    private func registerDumpTap(_ session: TrackSession) {
+        var gate = dumpTaps[session.id] ?? TripleTapGate()
+        let opened = gate.register(at: Date())
+        dumpTaps[session.id] = gate
+        guard opened else { return }
+        Task {
+            let text = await model.gpsEventsDump(for: session)
+            dumpPage = GpsEventsPage(sessionId: session.id, text: text)
+        }
+    }
+
     private func sessionTitle(_ millis: Int64) -> String {
         let date = Date(timeIntervalSince1970: TimeInterval(millis) / 1000)
         return date.formatted(date: .abbreviated, time: .shortened)
+    }
+}
+
+private struct GpsEventsBlockHeight: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
+struct GpsEventsScreen: View {
+    var text: String
+    @State private var copied = false
+    @State private var copyToken = 0
+    @State private var cachedWidths: [CGFloat] = []
+    @State private var sessionHeight: CGFloat = 108
+    @State private var headerHeight: CGFloat = 36
+
+    var body: some View {
+        let grid = GpsEventsDump.grid(from: text)
+        let widths = cachedWidths.count == grid.columns.count ? cachedWidths : GpsEventsDump.columnWidths(columns: grid.columns, rows: grid.rows)
+        let tableWidth = widths.reduce(0, +)
+        GeometryReader { geo in
+            VStack(alignment: .leading, spacing: 0) {
+                sessionBlock(grid.sessionLines)
+                ScrollView(.horizontal) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        columnHeader(grid.columns, widths: widths)
+                        ScrollView(.vertical) {
+                            LazyVStack(alignment: .leading, spacing: 0) {
+                                ForEach(grid.rows.indices, id: \.self) { index in
+                                    dataRow(grid.rows[index], widths: widths, stripe: index.isMultiple(of: 2))
+                                }
+                            }
+                            .frame(width: tableWidth, alignment: .leading)
+                        }
+                        .frame(width: max(tableWidth, 1), height: rowHeight(in: geo.size.height))
+                    }
+                }
+                .frame(height: max(geo.size.height - sessionHeight, 0))
+            }
+            .frame(width: geo.size.width, height: geo.size.height, alignment: .topLeading)
+        }
+        .background(Color(uiColor: .systemBackground))
+        .navigationTitle("gps_events")
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button(action: copyAll) {
+                    Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                }
+                .accessibilityIdentifier("gpsEventsCopy")
+                .accessibilityLabel(L10n.text("Copy", "Másolás"))
+            }
+        }
+        .onAppear {
+            if cachedWidths.count != grid.columns.count {
+                cachedWidths = GpsEventsDump.columnWidths(columns: grid.columns, rows: grid.rows)
+            }
+        }
+        .onPreferenceChange(GpsEventsBlockHeight.self) { sessionHeight = $0 }
+    }
+
+    private func rowHeight(in total: CGFloat) -> CGFloat {
+        max(total - sessionHeight - headerHeight, 0)
+    }
+
+    private func sessionBlock(_ lines: [String]) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
+                let parts = line.split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(parts.first ?? "")
+                        .foregroundStyle(.secondary)
+                    Text(parts.count > 1 ? parts[1] : "")
+                }
+                .font(.system(size: GpsEventsDump.cellFontSize, design: .monospaced))
+                .lineLimit(1)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background {
+            GeometryReader { geo in
+                Color.clear.preference(key: GpsEventsBlockHeight.self, value: geo.size.height)
+            }
+        }
+        .accessibilityIdentifier("gpsEventsDump")
+    }
+
+    private func columnHeader(_ columns: [String], widths: [CGFloat]) -> some View {
+        columnLine(columns, widths: widths, header: true)
+            .background(Color(uiColor: .secondarySystemBackground))
+            .overlay(alignment: .bottom) { Divider() }
+            .background {
+                GeometryReader { geo in
+                    Color.clear.preference(key: HeaderHeightKey.self, value: geo.size.height)
+                }
+            }
+            .onPreferenceChange(HeaderHeightKey.self) { headerHeight = $0 }
+            .accessibilityIdentifier("gpsEventsHeader")
+    }
+
+    private func dataRow(_ cells: [String], widths: [CGFloat], stripe: Bool) -> some View {
+        columnLine(cells, widths: widths, header: false)
+            .background(stripe ? Color.primary.opacity(0.05) : Color.clear)
+    }
+
+    private func columnLine(_ cells: [String], widths: [CGFloat], header: Bool) -> some View {
+        HStack(spacing: 0) {
+            ForEach(widths.indices, id: \.self) { index in
+                Text(index < cells.count ? cells[index] : "")
+                    .font(.system(size: GpsEventsDump.cellFontSize, weight: header ? .semibold : .regular, design: .monospaced))
+                    .lineLimit(1)
+                    .padding(.horizontal, 6)
+                    .frame(width: widths[index], alignment: .leading)
+                    .padding(.vertical, header ? 8 : 4)
+            }
+        }
+    }
+
+    private func copyAll() {
+        UIPasteboard.general.string = text
+        copied = true
+        copyToken += 1
+        let token = copyToken
+        Task {
+            try? await Task.sleep(for: .seconds(1.2))
+            if copyToken == token { copied = false }
+        }
+    }
+}
+
+private struct HeaderHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 36
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
     }
 }
 
