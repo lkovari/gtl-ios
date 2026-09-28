@@ -139,6 +139,5 @@ The simulator can show the screens and a simulated GPS location. These need a ph
 
 ## Not available on iPhone
 
-- Per-satellite GNSS measurements, sky plot, constellation colors, SNR bars, and satellite counts. The GPS tab shows latitude, longitude, accuracy, GPS altitude, barometric altitude, course, and speed. Recording quality uses horizontal accuracy. Stale fixes older than 10 seconds are dropped.
 - Ambient temperature. The temperature row says that no sensor is available, and temperature is not stored.
 - A separate terrain raster basemap. MapKit provides standard, satellite, and hybrid, including 3D elevation.

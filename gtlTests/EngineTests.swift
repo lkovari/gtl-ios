@@ -95,6 +95,14 @@ final class EngineTests: XCTestCase {
         XCTAssertTrue(MapTrackVisibility.visible(logging: true, showLastTrackOnMap: false, selectedSessionId: nil, mapCleared: true))
         XCTAssertFalse(MapTrackVisibility.visible(logging: false, showLastTrackOnMap: true, selectedSessionId: nil, mapCleared: true))
         XCTAssertEqual(MapCameraMode.of(logging: true, keepWholeTrack: false, viewingSaved: false), .followLive)
+        let live = TrackLine.withLiveEnd(
+            [GeoPoint(latitude: 47, longitude: 19, altitude: nil)],
+            logging: true,
+            latitude: 47.01,
+            longitude: 19
+        )
+        XCTAssertEqual(live.count, 2)
+        XCTAssertEqual(live.last?.latitude ?? 0, 47.01, accuracy: 0.0001)
         XCTAssertTrue(GpsQualityNotice.isPoor(20_000))
     }
 

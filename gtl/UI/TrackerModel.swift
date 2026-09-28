@@ -11,6 +11,23 @@ enum TrackerTab: String, CaseIterable {
     case compass
 }
 
+final class OfflineCancel: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value = false
+    var cancelled: Bool {
+        get {
+            lock.lock()
+            defer { lock.unlock() }
+            return value
+        }
+        set {
+            lock.lock()
+            value = newValue
+            lock.unlock()
+        }
+    }
+}
+
 @MainActor
 @Observable
 final class TrackerModel {
@@ -67,6 +84,8 @@ final class TrackerModel {
     var zoomTicket = 0
     var zoomStep = 0
     var pendingShare: URL?
+    var exportNotice: String?
+    var returnToMap = false
     var altimeterAvailable = false
     var poorGps = false
     var showErrorLog = false
@@ -92,6 +111,11 @@ final class TrackerModel {
     private var indexTask: Task<Void, Never>?
     private var searchTask: Task<Void, Never>?
     private var searchGeneration = 0
+    private var offlineTask: Task<Void, Never>?
+    private var offlineCancel = OfflineCancel()
+    private var writeChain: Task<Void, Never>?
+    private var loadedBounds: LatLonBounds?
+    private var loadedZoom = -1
 
     init() {
         let settingsStore = SettingsStore()
@@ -133,10 +157,10 @@ final class TrackerModel {
 
     var displayPoints: [GeoPoint] {
         guard trackVisible else { return [] }
-        if settings.optimizationActive {
-            return DouglasPeucker.simplify(trackPoints, toleranceMeters: DouglasPeucker.clampTolerance(settings.optimizationTolerance))
-        }
-        return trackPoints
+        let drawn = settings.optimizationActive
+            ? DouglasPeucker.simplify(trackPoints, toleranceMeters: DouglasPeucker.clampTolerance(settings.optimizationTolerance))
+            : trackPoints
+        return TrackLine.withLiveEnd(drawn, logging: logging, latitude: latitude, longitude: longitude)
     }
 
     func acceptDisclaimer() {
@@ -235,7 +259,11 @@ final class TrackerModel {
         selectedSessionId = id
         mapCleared = false
         tab = .map
-        Task { await loadSession(id) }
+        returnToMap = true
+        Task {
+            await loadSession(id)
+            frameTrack(trackPoints)
+        }
     }
 
     func deleteSessions(_ ids: Set<Int64>) {
@@ -269,9 +297,11 @@ final class TrackerModel {
                     waypoints: markers.map { GpxWaypoint(name: $0.kind.kmlPlacemarkName(), point: $0.event.point(), timestampMillis: $0.event.timestampMillis) }
                 ))
             }
-            let folder = FileManager.default.temporaryDirectory.appendingPathComponent("gtltracklogs", isDirectory: true)
+            let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            let folder = documents.appendingPathComponent("Exports", isDirectory: true)
             try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
             let stamp = sessionName(nowMillis())
+            let url: URL
             if kmz {
                 let kml = KmlExporter.export(KmlDocument(name: stamp, trackColorAabbggrr: "ff0000ff", trackWidth: 6, tracks: tracks))
                 let packed = KmzExporter.pack(kml: kml, files: [
@@ -279,15 +309,18 @@ final class TrackerModel {
                     "icons/pause.png": MarkerIcon.amber,
                     "icons/stop.png": MarkerIcon.red
                 ])
-                let url = folder.appendingPathComponent("\(stamp).kmz")
+                url = folder.appendingPathComponent("\(stamp).kmz")
                 try? packed.write(to: url)
-                pendingShare = url
             } else {
                 let gpx = GpxExporter.export(GpxDocument(tracks: gpxTracks))
-                let url = folder.appendingPathComponent("\(stamp).gpx")
+                url = folder.appendingPathComponent("\(stamp).gpx")
                 try? gpx.write(to: url, atomically: true, encoding: .utf8)
-                pendingShare = url
             }
+            pendingShare = url
+            exportNotice = L10n.text(
+                "Saved \(url.lastPathComponent) in the Files app: On My iPhone → GPS Track Logger → Exports.",
+                "Mentve: \(url.lastPathComponent). A Fájlok appban: A(z) iPhone-omon → GPS Track Logger → Exports."
+            )
         }
     }
 
@@ -364,15 +397,34 @@ final class TrackerModel {
         let maxLon = min(bounds.maxLongitude, header.bounds.maxLongitude)
         guard minLat < maxLat, minLon < maxLon else { return }
         let clipped = LatLonBounds(minLatitude: minLat, minLongitude: minLon, maxLatitude: maxLat, maxLongitude: maxLon)
+        if let loadedBounds, zoom == loadedZoom, Self.viewInside(loadedBounds, clipped) { return }
+        offlineCancel.cancelled = true
+        let flag = OfflineCancel()
+        offlineCancel = flag
+        offlineTask?.cancel()
         offlineGeneration += 1
         let generation = offlineGeneration
-        Task.detached {
-            let raw = MapsforgeReader.features(url: url, bounds: clipped, zoom: zoom, limit: 9000)
-            await MainActor.run {
-                guard self.offlineGeneration == generation else { return }
-                self.offlineRaw = raw
-                self.applyOfflineFilter()
-            }
+        let wide = Self.expand(clipped, fraction: zoom <= 11 ? 0.05 : 0.3)
+        let featureLimit = zoom <= 11 ? 2400 : 6000
+        let poiLimit = zoom <= 11 ? 6 : 28
+        offlineTask = Task {
+            try? await Task.sleep(nanoseconds: 220_000_000)
+            guard !Task.isCancelled, generation == self.offlineGeneration else { return }
+            let raw = await Task.detached(priority: .userInitiated) {
+                MapsforgeReader.features(
+                    url: url,
+                    bounds: wide,
+                    zoom: zoom,
+                    limit: featureLimit,
+                    poiLimit: poiLimit,
+                    isCancelled: { flag.cancelled }
+                )
+            }.value
+            guard !Task.isCancelled, generation == self.offlineGeneration else { return }
+            self.offlineRaw = raw
+            self.loadedBounds = wide
+            self.loadedZoom = zoom
+            self.applyOfflineFilter()
         }
     }
 
@@ -460,6 +512,8 @@ final class TrackerModel {
         settings.selectedMapId = id
         settings.useOfflineMap = true
         store.save(settings)
+        loadedBounds = nil
+        loadedZoom = -1
         refreshMaps()
         scheduleIndex()
     }
@@ -687,10 +741,44 @@ final class TrackerModel {
             usageType: settings.usageType.rawValue, isPlacemark: kind != .MOVE, eventKind: kind.rawValue,
             baroAltitude: baroAltitude, pressureHpa: pressureHpa
         )
-        Task {
+        let database = database
+        let previous = writeChain
+        writeChain = Task {
+            await previous?.value
             do { try await database?.insert(event) }
             catch { ErrorLogStore.record(action: "track.insert", error: error) }
         }
+    }
+
+    private func frameTrack(_ points: [GeoPoint]) {
+        guard let bounds = TrackCameraBounds.of(points, extra: nil) else { return }
+        let span = max(bounds.maxLatitude - bounds.minLatitude, bounds.maxLongitude - bounds.minLongitude, 0.002)
+        target = GeoPoint(
+            latitude: (bounds.minLatitude + bounds.maxLatitude) / 2,
+            longitude: (bounds.minLongitude + bounds.maxLongitude) / 2
+        )
+        focusZoom = MapFitZoom.clamp(Int(log2(140 / span).rounded()))
+        focusToken += 1
+    }
+
+    private static func expand(_ bounds: LatLonBounds, fraction: Double) -> LatLonBounds {
+        let lat = (bounds.maxLatitude - bounds.minLatitude) * fraction
+        let lon = (bounds.maxLongitude - bounds.minLongitude) * fraction
+        return LatLonBounds(
+            minLatitude: bounds.minLatitude - lat,
+            minLongitude: bounds.minLongitude - lon,
+            maxLatitude: bounds.maxLatitude + lat,
+            maxLongitude: bounds.maxLongitude + lon
+        )
+    }
+
+    private static func viewInside(_ loaded: LatLonBounds, _ view: LatLonBounds) -> Bool {
+        let latMargin = max(0.002, (loaded.maxLatitude - loaded.minLatitude) * 0.12)
+        let lonMargin = max(0.002, (loaded.maxLongitude - loaded.minLongitude) * 0.12)
+        return view.minLatitude >= loaded.minLatitude + latMargin
+            && view.maxLatitude <= loaded.maxLatitude - latMargin
+            && view.minLongitude >= loaded.minLongitude + lonMargin
+            && view.maxLongitude <= loaded.maxLongitude - lonMargin
     }
 
     private func finishDownload(id: String, temp: URL) {

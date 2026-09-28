@@ -42,16 +42,35 @@ struct MapsforgeSubFile {
     var subFileSize: Int64
 }
 
+private final class MapFileCache: @unchecked Sendable {
+    private var key = ""
+    private var data: Data?
+    private let lock = NSLock()
+
+    func data(at url: URL) -> Data? {
+        let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+        let next = "\(url.path)#\(size)"
+        lock.lock()
+        defer { lock.unlock() }
+        if key == next, let data { return data }
+        guard let loaded = try? Data(contentsOf: url, options: [.mappedIfSafe]) else { return nil }
+        key = next
+        data = loaded
+        return loaded
+    }
+}
+
 enum MapsforgeReader {
+    private static let mapFileCache = MapFileCache()
     static func header(of url: URL) -> MapsforgeHeader? {
-        guard OsmMapFile.isReadable(url), let data = try? Data(contentsOf: url, options: [.mappedIfSafe]) else {
+        guard OsmMapFile.isReadable(url), let data = mapFileCache.data(at: url) else {
             return nil
         }
         return parseHeader(data)
     }
 
     static func namedPlaces(url: URL, limit: Int, isCancelled: () -> Bool = { false }) -> [IndexedPlace] {
-        guard let data = try? Data(contentsOf: url, options: [.mappedIfSafe]), let header = parseHeader(data) else {
+        guard let data = mapFileCache.data(at: url), let header = parseHeader(data) else {
             return []
         }
         var rows: [IndexedPlace] = []
@@ -156,22 +175,32 @@ enum MapsforgeReader {
         }
     }
 
-    static func features(url: URL, bounds: LatLonBounds, zoom: Int, limit: Int, poiLimit: Int = 28) -> [MapFeature] {
-        guard let data = try? Data(contentsOf: url, options: [.mappedIfSafe]), let header = parseHeader(data) else {
+    static func features(
+        url: URL,
+        bounds: LatLonBounds,
+        zoom: Int,
+        limit: Int,
+        poiLimit: Int = 28,
+        isCancelled: @escaping @Sendable () -> Bool = { false }
+    ) -> [MapFeature] {
+        guard let data = mapFileCache.data(at: url), let header = parseHeader(data) else {
             return []
         }
         let queryZoom = min(max(zoom, 0), 22)
         guard let sub = chooseSubfile(header, bounds: bounds, queryZoom: queryZoom) else { return [] }
         let grid = tileGrid(header.bounds, sub.baseZoom)
-        var query = queryTiles(bounds, zoom: sub.baseZoom, grid: grid)
-        if query.count > 72 { query = Array(query.prefix(72)) }
+        let query = queryTiles(bounds, zoom: sub.baseZoom, grid: grid)
         guard !query.isEmpty else { return [] }
-        let share = limit / max(query.count, 1)
-        let floor = query.count <= 12 ? min(limit, 500) : 140
-        let perTile = min(1600, max(share, floor))
+        let overview = queryZoom <= 11 || query.count > 36
+        let cap = overview ? min(limit, 2400) : limit
+        let share = cap / max(query.count, 1)
+        let floor = query.count <= 12 ? min(cap, overview ? 160 : 400) : (overview ? 20 : 70)
+        let perTile = min(overview ? 180 : 700, max(share, floor))
+        let poisPerTile = overview ? min(poiLimit, 4) : poiLimit
         var features: [MapFeature] = []
         let cursor = ByteCursor(data)
         for tile in query {
+            if features.count >= cap || isCancelled() { break }
             let block = tile.row * grid.width + tile.col
             let entryPos = sub.indexStartAddress + Int64(block * 5)
             guard entryPos >= 0, entryPos + 5 <= Int64(data.count) else { continue }
@@ -201,7 +230,7 @@ enum MapsforgeReader {
                 originLat: origin.lat,
                 originLon: origin.lon,
                 limit: perTile,
-                poiLimit: poiLimit
+                poiLimit: poisPerTile
             ) {
                 features.append(contentsOf: decoded)
             }
@@ -220,7 +249,7 @@ enum MapsforgeReader {
             ?? subs[0]
         for _ in 0..<subs.count {
             let grid = tileGrid(header.bounds, chosen.baseZoom)
-            if tileCount(bounds, zoom: chosen.baseZoom, grid: grid) <= 48 { return chosen }
+            if tileCount(bounds, zoom: chosen.baseZoom, grid: grid) <= 28 { return chosen }
             guard let lower = subs.filter({ $0.baseZoom < chosen.baseZoom }).max(by: { $0.baseZoom < $1.baseZoom }) else {
                 return chosen
             }

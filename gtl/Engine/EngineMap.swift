@@ -492,6 +492,18 @@ enum TrackEndpoints {
     }
 }
 
+enum TrackLine {
+    static func withLiveEnd(_ points: [GeoPoint], logging: Bool, latitude: Double?, longitude: Double?) -> [GeoPoint] {
+        guard logging, let latitude, let longitude else { return points }
+        let here = GeoPoint(latitude: latitude, longitude: longitude, altitude: nil)
+        guard let last = points.last else { return [here] }
+        guard FixAcceptance.haversineMeters(last.latitude, last.longitude, latitude, longitude) > 3 else { return points }
+        var copy = points
+        copy.append(here)
+        return copy
+    }
+}
+
 enum MapFitZoom {
     static let minZoom = 3
     static let maxZoom = 20

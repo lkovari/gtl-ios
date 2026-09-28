@@ -35,6 +35,12 @@ struct TrackerScreen: View {
             }
         }
         .onChange(of: model.tab) { _, _ in model.onTabChange() }
+        .onChange(of: model.returnToMap) { _, go in
+            if go {
+                path.removeAll()
+                model.returnToMap = false
+            }
+        }
         .onAppear { model.onTabChange() }
         .onChange(of: model.showErrorLog) { _, show in
             if show {
@@ -111,12 +117,6 @@ struct GpsTab: View {
                 metric(L10n.text("Accuracy", "Pontosság"), model.accuracy.map { String(format: "%.0f m", $0) } ?? "—")
                 metric(L10n.text("GPS / Baro", "GPS / Baro"), altitudeLine)
                 metric(L10n.text("Status", "Állapot"), statusLine)
-                Text(L10n.text(
-                    "The chip uses GPS, Galileo, BeiDou, GLONASS, and QZSS. iOS does not tell apps which satellites are in view, so there is no sky plot or SNR.",
-                    "A chip GPS-t, Galileót, BeiDou-t, GLONASS-t és QZSS-t használ. Az iOS nem mondja meg az appnak, melyik műhold látszik, ezért nincs égboltkép és SNR."
-                ))
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
                 if model.settings.showFixCloud {
                     metric("n", "\(model.fixCloud.stats.sampleCount)")
                     metric("RMS", model.fixCloud.stats.rmsMeters.map { String(format: "%.1f m", $0) } ?? "—")

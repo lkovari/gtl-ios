@@ -159,6 +159,7 @@ struct MapDownloadScreen: View {
 struct TracksScreen: View {
     @Bindable var model: TrackerModel
     @State private var selected: Set<Int64> = []
+    @State private var sharing = false
     var body: some View {
         List {
             ForEach(model.sessions) { session in
@@ -194,7 +195,16 @@ struct TracksScreen: View {
                     .disabled(selected.isEmpty)
             }
         }
-        .sheet(isPresented: Binding(get: { model.pendingShare != nil }, set: { if !$0 { model.pendingShare = nil } })) {
+        .alert(
+            L10n.text("Track saved", "Útvonal mentve"),
+            isPresented: Binding(get: { model.exportNotice != nil }, set: { if !$0 { model.exportNotice = nil } })
+        ) {
+            Button(L10n.text("Share", "Megosztás")) { sharing = true }
+            Button(L10n.text("OK", "Rendben"), role: .cancel) {}
+        } message: {
+            Text(model.exportNotice ?? "")
+        }
+        .sheet(isPresented: $sharing) {
             if let url = model.pendingShare { ShareSheet(url: url) }
         }
     }
@@ -234,14 +244,14 @@ struct HelpScreen: View {
                 }
                 section(L10n.text("Track logging", "Nyomvonal rögzítés"), id: "logging") {
                     Text(L10n.text(
-                        "Kalman smooths stored points when Smooth recorded track is on. Simplify only thins the line drawn on the map. The stored route and shared KMZ or GPX keep every accepted point. Smart density uses speed bands. Run/Hike and bicycle keep points closer together. This phone does not report a satellite count, so recording quality uses horizontal accuracy. Fixes older than 10 seconds are dropped.",
-                        "A Kalman a letárolt pontokat simítja, ha a Rögzített útvonal simítása be van. Az egyszerűsítés csak a térképen rajzolt vonalat ritkítja. A tárolt útvonal és a megosztott KMZ vagy GPX minden elfogadott pontot megtart. Az okos sűrűség sebességsávokat használ. Futásnál és kerékpárnál sűrűbbek a pontok. A telefon nem ad műholdszámot, ezért a rögzítés a vízszintes pontosságot használja. A 10 másodpercnél régebbi fixek kiesnek."
+                        "Kalman smooths stored points when Smooth recorded track is on. Simplify only thins the line drawn on the map. The stored route and shared KMZ or GPX keep every accepted point. Smart density uses speed bands. Run/Hike and bicycle keep points closer together. Recording quality uses horizontal accuracy. Fixes older than 10 seconds are dropped.",
+                        "A Kalman a letárolt pontokat simítja, ha a Rögzített útvonal simítása be van. Az egyszerűsítés csak a térképen rajzolt vonalat ritkítja. A tárolt útvonal és a megosztott KMZ vagy GPX minden elfogadott pontot megtart. Az okos sűrűség sebességsávokat használ. Futásnál és kerékpárnál sűrűbbek a pontok. A rögzítés a vízszintes pontosságot használja. A 10 másodpercnél régebbi fixek kiesnek."
                     ))
                 }
                 section("GPS", id: "gps") {
                     Text(L10n.text(
-                        "Latitude, longitude, accuracy, course, speed, GPS altitude, and barometric altitude when a pressure sensor exists. The chip uses GPS, Galileo, BeiDou, GLONASS, and QZSS, but iOS does not report which constellation, satellite count, sky plot, or SNR. Logging status is on the Route tab. There is no ambient temperature sensor, so temperature is not stored.",
-                        "Szélesség, hosszúság, pontosság, irány, sebesség, GPS-magasság, és barometrikus magasság, ha van nyomásszenzor. A chip GPS-t, Galileót, BeiDou-t, GLONASS-t és QZSS-t használ, de az iOS nem adja át a konstellációt, a műholdszámot, az égboltképet vagy az SNR-t. A naplózás állapota az Útvonal fülön van. Nincs hőmérséklet-szenzor, ezért a hőmérséklet nem kerül tárolásra."
+                        "Latitude, longitude, accuracy, course, speed, GPS altitude, and barometric altitude when a pressure sensor exists. Logging status is on the Route tab. There is no ambient temperature sensor, so temperature is not stored.",
+                        "Szélesség, hosszúság, pontosság, irány, sebesség, GPS-magasság, és barometrikus magasság, ha van nyomásszenzor. A naplózás állapota az Útvonal fülön van. Nincs hőmérséklet-szenzor, ezért a hőmérséklet nem kerül tárolásra."
                     ))
                 }
                 section(L10n.text("Route", "Útvonal"), id: "route") {
@@ -283,8 +293,8 @@ struct HelpScreen: View {
                 }
                 section(L10n.text("Sharing KMZ and GPX", "KMZ és GPX megosztás"), id: "share") {
                     Text(L10n.text(
-                        "Saved tracks → select sessions → share KMZ or GPX. KMZ is KML plus start, pause, and stop icons. GPX 1.1 has one track per session, with latitude, longitude, GPS elevation, and UTC time. Several sessions become one file.",
-                        "Mentett útvonalak → kijelölés → KMZ vagy GPX megosztás. A KMZ KML, plusz indulás, szünet és megállás ikon. A GPX 1.1 munkamenetenként egy track: szélesség, hosszúság, GPS-magasság és UTC idő. Több munkamenet egy fájlba kerül."
+                        "Saved tracks → select sessions → GPX or KMZ. The file is saved in the Files app under On My iPhone → GPS Track Logger → Exports, and a share sheet can copy it elsewhere. KMZ is KML plus start, pause, and stop icons. GPX 1.1 has one track per session, with latitude, longitude, GPS elevation, and UTC time. Several sessions become one file.",
+                        "Mentett útvonalak → kijelölés → GPX vagy KMZ. A fájl a Fájlok appban van: A(z) iPhone-omon → GPS Track Logger → Exports, és a megosztó lapról máshova is másolható. A KMZ KML, plusz indulás, szünet és megállás ikon. A GPX 1.1 munkamenetenként egy track: szélesség, hosszúság, GPS-magasság és UTC idő. Több munkamenet egy fájlba kerül."
                     ))
                 }
                 section(L10n.text("Privacy policy", "Adatvédelmi nyilatkozat"), id: "privacy") {

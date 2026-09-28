@@ -297,6 +297,7 @@ struct OnlineMap: View {
         }
         .mapStyle(mapStyle)
         .onChange(of: model.trackPoints.count) { _, _ in follow() }
+        .onChange(of: model.latitude) { _, _ in follow() }
         .onChange(of: model.focusToken) { _, _ in showTarget() }
         .onChange(of: model.zoomTicket) { _, _ in zoomBy(model.zoomStep) }
         .onChange(of: model.locateToken) { _, _ in showTarget() }
@@ -350,8 +351,11 @@ struct OnlineMap: View {
     }
 
     private func follow() {
-        guard let last = model.trackPoints.last, model.logging else { return }
-        if model.settings.keepWholeTrackOnScreen, let bounds = TrackCameraBounds.of(model.trackPoints, extra: nil) {
+        guard model.logging else { return }
+        let latitude = model.latitude ?? model.trackPoints.last?.latitude
+        let longitude = model.longitude ?? model.trackPoints.last?.longitude
+        guard let latitude, let longitude else { return }
+        if model.settings.keepWholeTrackOnScreen, let bounds = TrackCameraBounds.of(model.displayPoints, extra: nil) {
             let region = MKCoordinateRegion(
                 center: CLLocationCoordinate2D(latitude: (bounds.minLatitude + bounds.maxLatitude) / 2, longitude: (bounds.minLongitude + bounds.maxLongitude) / 2),
                 span: MKCoordinateSpan(latitudeDelta: max(0.01, bounds.maxLatitude - bounds.minLatitude), longitudeDelta: max(0.01, bounds.maxLongitude - bounds.minLongitude))
@@ -359,8 +363,8 @@ struct OnlineMap: View {
             cameraDistance = max(200, region.span.latitudeDelta * 111_000)
             position = .region(region)
         } else {
-            cameraDistance = 1200
-            position = .camera(MapCamera(centerCoordinate: CLLocationCoordinate2D(latitude: last.latitude, longitude: last.longitude), distance: 1200))
+            if cameraDistance > 5_000 { cameraDistance = 1200 }
+            position = .camera(MapCamera(centerCoordinate: CLLocationCoordinate2D(latitude: latitude, longitude: longitude), distance: cameraDistance))
         }
     }
 
@@ -477,6 +481,11 @@ struct OfflineMapRepresentable: UIViewRepresentable {
         var model: TrackerModel
         var features: [MapFeature] = []
         private var source: MLNShapeSource?
+        private var overlaySource: MLNShapeSource?
+        private var builtLayerEpoch = -1
+        private var followLatitude: Double?
+        private var followLongitude: Double?
+        private var lastLabelTime: TimeInterval = 0
         private var placedId = ""
         private var cameraReady = false
         private var cameraSet = false
@@ -522,16 +531,20 @@ struct OfflineMapRepresentable: UIViewRepresentable {
 
         func mapView(_ mapView: MLNMapView, regionIsChangingWith reason: MLNCameraChangeReason) {
             guard cameraSet else { return }
-            redrawLabels(mapView)
+            let now = CACurrentMediaTime()
+            if now - lastLabelTime > 0.08 {
+                lastLabelTime = now
+                redrawLabels(mapView)
+            }
             moveTapAnchor(mapView)
         }
 
         func mapView(_ mapView: MLNMapView, regionDidChangeAnimated animated: Bool) {
             guard cameraSet else { return }
+            lastLabelTime = CACurrentMediaTime()
             redrawLabels(mapView)
             moveTapAnchor(mapView)
             let zoom = Int(mapView.zoomLevel.rounded())
-            guard zoom >= 4 else { return }
             let bounds = mapView.visibleCoordinateBounds
             let box = LatLonBounds(
                 minLatitude: bounds.sw.latitude,
@@ -563,7 +576,6 @@ struct OfflineMapRepresentable: UIViewRepresentable {
             addLine(style, "line-cycle", "cycle", UIColor(red: 0.16, green: 0.52, blue: 0.72, alpha: 1), 2.2)
             addLine(style, "line-emphasis", "emphasis", UIColor(red: 0.77, green: 0.0, blue: 0.48, alpha: 1), 3.2)
             addLine(style, "line-blaze", "blaze", UIColor(red: 0.12, green: 0.35, blue: 0.66, alpha: 1), 2.6)
-            addLine(style, "line-track", "track", UIColor(red: 0.76, green: 0.23, blue: 0.18, alpha: 1), 4)
             let points = MLNCircleStyleLayer(identifier: "points", source: source)
             points.predicate = NSPredicate(format: "paint == 'poi'")
             points.circleColor = NSExpression(forConstantValue: UIColor(red: 0.12, green: 0.42, blue: 0.38, alpha: 1))
@@ -571,14 +583,24 @@ struct OfflineMapRepresentable: UIViewRepresentable {
             points.circleStrokeColor = NSExpression(forConstantValue: UIColor.white)
             points.circleStrokeWidth = NSExpression(forConstantValue: 1)
             style.addLayer(points)
-            let here = MLNCircleStyleLayer(identifier: "here", source: source)
+            let overlay = MLNShapeSource(identifier: "overlay", shape: MLNShapeCollectionFeature(shapes: []), options: nil)
+            style.addSource(overlay)
+            overlaySource = overlay
+            let track = MLNLineStyleLayer(identifier: "line-track", source: overlay)
+            track.predicate = NSPredicate(format: "paint == 'track'")
+            track.lineColor = NSExpression(forConstantValue: UIColor(red: 0.76, green: 0.23, blue: 0.18, alpha: 1))
+            track.lineWidth = NSExpression(forConstantValue: 4)
+            track.lineCap = NSExpression(forConstantValue: "round")
+            track.lineJoin = NSExpression(forConstantValue: "round")
+            style.addLayer(track)
+            let here = MLNCircleStyleLayer(identifier: "here", source: overlay)
             here.predicate = NSPredicate(format: "paint == 'here'")
             here.circleRadius = NSExpression(forConstantValue: 8)
             here.circleColor = NSExpression(forConstantValue: UIColor(red: 0.76, green: 0.23, blue: 0.18, alpha: 1))
             here.circleStrokeColor = NSExpression(forConstantValue: UIColor.white)
             here.circleStrokeWidth = NSExpression(forConstantValue: 3)
             style.addLayer(here)
-            let target = MLNCircleStyleLayer(identifier: "target", source: source)
+            let target = MLNCircleStyleLayer(identifier: "target", source: overlay)
             target.predicate = NSPredicate(format: "paint == 'target'")
             target.circleRadius = NSExpression(forConstantValue: 7)
             target.circleColor = NSExpression(forConstantValue: UIColor(red: 0.12, green: 0.54, blue: 0.50, alpha: 1))
@@ -703,6 +725,46 @@ struct OfflineMapRepresentable: UIViewRepresentable {
         }
 
         func sync(_ map: MLNMapView) {
+            if builtLayerEpoch != layerEpoch {
+                builtLayerEpoch = layerEpoch
+                source?.shape = MLNShapeCollectionFeature(shapes: mapShapes())
+                anchorsDirty = true
+                frameLocalStreets(map)
+            }
+            var overlay: [MLNShape & MLNFeature] = []
+            let points = model.displayPoints
+            if points.count >= 2 {
+                var coords = points.map { CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude) }
+                let polyline = MLNPolylineFeature(coordinates: &coords, count: UInt(coords.count))
+                polyline.attributes = ["paint": "track"]
+                overlay.append(polyline)
+            }
+            if let latitude = userLatitude, let longitude = userLongitude {
+                let here = MLNPointFeature()
+                here.coordinate = CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+                here.attributes = ["paint": "here"]
+                overlay.append(here)
+            }
+            if let latitude = distanceLatitude, let longitude = distanceLongitude {
+                let target = MLNPointFeature()
+                target.coordinate = CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+                target.attributes = ["paint": "target"]
+                overlay.append(target)
+            }
+            overlaySource?.shape = MLNShapeCollectionFeature(shapes: overlay)
+            if anchorsDirty { redrawLabels(map) }
+            if model.logging, !suppressFollow, let latitude = userLatitude, let longitude = userLongitude {
+                let moved = followLatitude.map { FixAcceptance.haversineMeters($0, followLongitude ?? longitude, latitude, longitude) > 8 } ?? true
+                if moved {
+                    followLatitude = latitude
+                    followLongitude = longitude
+                    map.setCenter(CLLocationCoordinate2D(latitude: latitude, longitude: longitude), zoomLevel: map.zoomLevel, animated: false)
+                }
+            }
+            suppressFollow = false
+        }
+
+        private func mapShapes() -> [MLNShape & MLNFeature] {
             let hiking = model.settings.selectedMapId == OsmCatalog.tuhuId
             let settings = model.settings
             var shapes: [MLNShape & MLNFeature] = []
@@ -731,33 +793,7 @@ struct OfflineMapRepresentable: UIViewRepresentable {
                     }
                 }
             }
-            let points = model.displayPoints
-            if points.count >= 2 {
-                var coords = points.map { CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude) }
-                let polyline = MLNPolylineFeature(coordinates: &coords, count: UInt(coords.count))
-                polyline.attributes = ["paint": "track"]
-                shapes.append(polyline)
-            }
-            if let latitude = userLatitude, let longitude = userLongitude {
-                let here = MLNPointFeature()
-                here.coordinate = CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
-                here.attributes = ["paint": "here"]
-                shapes.append(here)
-            }
-            if let latitude = distanceLatitude, let longitude = distanceLongitude {
-                let target = MLNPointFeature()
-                target.coordinate = CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
-                target.attributes = ["paint": "target"]
-                shapes.append(target)
-            }
-            source?.shape = MLNShapeCollectionFeature(shapes: shapes)
-            anchorsDirty = true
-            redrawLabels(map)
-            frameLocalStreets(map)
-            if model.logging, let last = points.last, !suppressFollow {
-                map.setCenter(CLLocationCoordinate2D(latitude: last.latitude, longitude: last.longitude), zoomLevel: 16, animated: false)
-            }
-            suppressFollow = false
+            return shapes
         }
 
         private func redrawLabels(_ map: MLNMapView) {
