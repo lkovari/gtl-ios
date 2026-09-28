@@ -4,6 +4,7 @@ import SwiftUI
 
 struct MapTab: View {
     @Bindable var model: TrackerModel
+    @Namespace private var mapScope
     @State private var searchOpen = false
     @State private var layersOpen = false
     @State private var speedScaleToggled = false
@@ -18,6 +19,10 @@ struct MapTab: View {
                     roundButton("magnifyingglass", id: "mapSearch") { searchOpen.toggle() }
                     Spacer()
                     northDial
+                    if showsMapKitCompass {
+                        MapCompass(scope: mapScope)
+                            .mapControlVisibility(.visible)
+                    }
                 }
                 if searchOpen {
                     searchBox
@@ -44,6 +49,7 @@ struct MapTab: View {
             }
             .padding(10)
         }
+        .mapScope(mapScope)
         .sheet(isPresented: $layersOpen, onDismiss: { model.commitMapLayers() }) {
             MapLayerSheet(model: model)
                 .presentationDetents([.medium, .large])
@@ -149,7 +155,7 @@ struct MapTab: View {
                 logging: model.logging
             )
         } else {
-            OnlineMap(model: model)
+            OnlineMap(model: model, mapScope: mapScope)
         }
     }
 
@@ -381,6 +387,13 @@ struct MapTab: View {
         return SpeedColor.at(SpeedColorScale.bin(speedMps: speed, usage: model.settings.usageType)).color
     }
 
+    private var showsMapKitCompass: Bool {
+        guard !model.effectiveOffline else { return false }
+        let turns = model.mapHeading.truncatingRemainder(dividingBy: 360)
+        let degrees = turns < 0 ? turns + 360 : turns
+        return degrees > 0.5 && degrees < 359.5
+    }
+
     private var northDial: some View {
         Button {
             model.resetMapTilt()
@@ -410,6 +423,7 @@ struct MapTab: View {
 
 struct OnlineMap: View {
     @Bindable var model: TrackerModel
+    var mapScope: Namespace.ID
     @State private var position: MapCameraPosition = .automatic
     @State private var cameraDistance: Double = 8_000
     @State private var applyingFollow = false
@@ -419,7 +433,7 @@ struct OnlineMap: View {
 
     var body: some View {
         MapReader { proxy in
-        Map(position: $position) {
+        Map(position: $position, scope: mapScope) {
             trackLines
             routeLine
             endpoints
@@ -448,6 +462,9 @@ struct OnlineMap: View {
             }
         }
         .mapStyle(mapStyle)
+        .mapControls {
+            MapScaleView()
+        }
         .onChange(of: model.trackPoints.count) { _, _ in follow() }
         .onChange(of: model.latitude) { _, _ in follow() }
         .onChange(of: model.focusToken) { _, _ in showTarget() }
