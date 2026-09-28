@@ -309,6 +309,11 @@ struct SpeedRun: Equatable {
     var points: [GeoPoint]
 }
 
+struct SpeedBand: Equatable {
+    var lowerMps: Float?
+    var upperMps: Float?
+}
+
 enum SpeedColorScale {
     static let maxRuns = 300
 
@@ -333,6 +338,37 @@ enum SpeedColorScale {
         case .WATERCRAFT:
             return [2, 5, 8, 12]
         }
+    }
+
+    static func bands(for usage: UsageType) -> [SpeedBand] {
+        let cuts = thresholds(for: usage)
+        var bands = [SpeedBand(lowerMps: nil, upperMps: cuts.first)]
+        for index in cuts.indices {
+            let upper: Float? = index + 1 < cuts.count ? cuts[index + 1] : nil
+            bands.append(SpeedBand(lowerMps: cuts[index], upperMps: upper))
+        }
+        return bands
+    }
+
+    static func legendRange(_ band: SpeedBand, _ system: MeasurementSystem) -> String {
+        switch (band.lowerMps, band.upperMps) {
+        case (nil, let upper?):
+            return "< \(legendNumber(upper, system))"
+        case (let lower?, nil):
+            return "\(legendNumber(lower, system))+"
+        case (let lower?, let upper?):
+            return "\(legendNumber(lower, system))–\(legendNumber(upper, system))"
+        case (nil, nil):
+            return ""
+        }
+    }
+
+    static func legendNumber(_ metersPerSecond: Float, _ system: MeasurementSystem) -> String {
+        let text = String(format: "%.1f", locale: Locale(identifier: "en_US_POSIX"), Units.speedInUnit(metersPerSecond, system))
+        if text.hasSuffix(".0") {
+            return String(text.dropLast(2))
+        }
+        return text
     }
 
     static func bin(speedMps: Float?, usage: UsageType) -> Int {

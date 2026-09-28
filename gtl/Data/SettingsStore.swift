@@ -14,6 +14,7 @@ struct GtlSettings: Equatable {
     var optimizationActive: Bool
     var showLastTrackOnMap: Bool
     var keepWholeTrackOnScreen: Bool
+    var speedLegendAlwaysOpen: Bool
     var showAccuracyMarker: Bool
     var showFixCloud: Bool
     var keepScreenOnWhileLogging: Bool
@@ -47,6 +48,7 @@ struct GtlSettings: Equatable {
             optimizationActive: smoothing.optimizationActive,
             showLastTrackOnMap: true,
             keepWholeTrackOnScreen: false,
+            speedLegendAlwaysOpen: true,
             showAccuracyMarker: true,
             showFixCloud: false,
             keepScreenOnWhileLogging: false,
@@ -110,6 +112,7 @@ final class SettingsStore {
         if defaults.object(forKey: "opt_on") != nil { settings.optimizationActive = defaults.bool(forKey: "opt_on") }
         if defaults.object(forKey: "show_last") != nil { settings.showLastTrackOnMap = defaults.bool(forKey: "show_last") }
         if defaults.object(forKey: "keep_whole") != nil { settings.keepWholeTrackOnScreen = defaults.bool(forKey: "keep_whole") }
+        settings.speedLegendAlwaysOpen = bool("speed_legend_open", settings.speedLegendAlwaysOpen)
         if defaults.object(forKey: "show_acc") != nil { settings.showAccuracyMarker = defaults.bool(forKey: "show_acc") }
         if defaults.object(forKey: "show_cloud") != nil { settings.showFixCloud = defaults.bool(forKey: "show_cloud") }
         if defaults.object(forKey: "keep_screen") != nil { settings.keepScreenOnWhileLogging = defaults.bool(forKey: "keep_screen") }
@@ -154,6 +157,7 @@ final class SettingsStore {
         defaults.set(settings.optimizationActive, forKey: "opt_on")
         defaults.set(settings.showLastTrackOnMap, forKey: "show_last")
         defaults.set(settings.keepWholeTrackOnScreen, forKey: "keep_whole")
+        defaults.set(settings.speedLegendAlwaysOpen, forKey: "speed_legend_open")
         defaults.set(settings.showAccuracyMarker, forKey: "show_acc")
         defaults.set(settings.showFixCloud, forKey: "show_cloud")
         defaults.set(settings.keepScreenOnWhileLogging, forKey: "keep_screen")

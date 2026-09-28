@@ -102,6 +102,23 @@ final class EngineTests: XCTestCase {
         XCTAssertFalse(DownloadBudget.canStart(contentLength: DownloadBudget.maxOsmBytes + 1, usableSpace: room, cap: DownloadBudget.maxOsmBytes))
     }
 
+    @MainActor
+    func testSpeedLegendStaysOpenByDefault() {
+        let name = "speed-legend-defaults"
+        guard let defaults = UserDefaults(suiteName: name) else {
+            XCTFail("UserDefaults suite")
+            return
+        }
+        defaults.removePersistentDomain(forName: name)
+        let store = SettingsStore(defaults: defaults)
+        XCTAssertTrue(store.load().speedLegendAlwaysOpen)
+        var settings = store.load()
+        settings.speedLegendAlwaysOpen = false
+        store.save(settings)
+        XCTAssertFalse(store.load().speedLegendAlwaysOpen)
+        defaults.removePersistentDomain(forName: name)
+    }
+
     func testUsageDefaults() {
         XCTAssertEqual(UsageType.AIRCRAFT.defaultMeasurementSystem(), .ICAO)
         XCTAssertEqual(UsageType.RUNNER.pauseSpeedMps(), 0.25)
@@ -409,6 +426,23 @@ final class EngineTests: XCTestCase {
             ))
         }
         XCTAssertLessThanOrEqual(SpeedColorScale.runs(points: alternating, usage: .RUNNER).count, SpeedColorScale.maxRuns)
+        let run = SpeedColorScale.bands(for: .RUNNER)
+        XCTAssertEqual(run.count, 6)
+        XCTAssertEqual(run.map { SpeedColorScale.legendRange($0, .METRIC) }, ["< 3.6", "3.6–5.8", "5.8–7.9", "7.9–10.8", "10.8–14.4", "14.4+"])
+        XCTAssertEqual(SpeedColorScale.legendRange(run[0], .IMPERIAL), "< 2.2")
+        let hike = SpeedColorScale.bands(for: .WALKING_HIKE)
+        XCTAssertEqual(hike.map { SpeedColorScale.legendRange($0, .METRIC) }, ["< 3.6", "3.6–5.8", "5.8–7.9", "7.9–10.8", "10.8+"])
+        XCTAssertEqual(SpeedColorScale.bands(for: .PEDESTRIAN), hike)
+        let bike = SpeedColorScale.bands(for: .BICYCLE)
+        XCTAssertEqual(bike.map { SpeedColorScale.legendRange($0, .METRIC) }, ["< 10.8", "10.8–21.6", "21.6–28.8", "28.8–39.6", "39.6–50", "50+"])
+        let car = SpeedColorScale.bands(for: .FOUR_WHEELERS)
+        XCTAssertEqual(car.map { SpeedColorScale.legendRange($0, .METRIC) }, ["< 28.8", "28.8–50.4", "50.4–79.2", "79.2–118.8", "118.8–130", "130+"])
+        XCTAssertEqual(SpeedColorScale.bands(for: .TWO_WHEELERS), car)
+        let air = SpeedColorScale.bands(for: .AIRCRAFT)
+        XCTAssertEqual(air.map { SpeedColorScale.legendRange($0, .METRIC) }, ["< 100", "100–200", "200–350", "350–500", "500–600", "600+"])
+        XCTAssertEqual(SpeedColorScale.legendRange(air[0], .ICAO), "< 54")
+        let boat = SpeedColorScale.bands(for: .WATERCRAFT)
+        XCTAssertEqual(boat.map { SpeedColorScale.legendRange($0, .METRIC) }, ["< 7.2", "7.2–18", "18–28.8", "28.8–43.2", "43.2+"])
         XCTAssertEqual(RouteTransport.forUsage(.WALKING_HIKE), .walking)
         XCTAssertEqual(RouteTransport.forUsage(.RUNNER), .walking)
         XCTAssertEqual(RouteTransport.forUsage(.BICYCLE), .cycling)

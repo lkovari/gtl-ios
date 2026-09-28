@@ -96,14 +96,16 @@ enum Units {
         }
     }
 
-    static func hudSpeedNumber(_ metersPerSecond: Float, _ system: MeasurementSystem) -> String {
-        let value: Float
+    static func speedInUnit(_ metersPerSecond: Float, _ system: MeasurementSystem) -> Float {
         switch system {
-        case .METRIC: value = metersPerSecond * 3.6
-        case .IMPERIAL: value = metersPerSecond * 2.2369363
-        case .ICAO: value = metersPerSecond * 1.9438445
+        case .METRIC: return metersPerSecond * 3.6
+        case .IMPERIAL: return metersPerSecond * 2.2369363
+        case .ICAO: return metersPerSecond * 1.9438445
         }
-        return String(format: "%.0f", locale: posix, value)
+    }
+
+    static func hudSpeedNumber(_ metersPerSecond: Float, _ system: MeasurementSystem) -> String {
+        String(format: "%.0f", locale: posix, speedInUnit(metersPerSecond, system))
     }
 
     static func hudSpeedUnit(_ system: MeasurementSystem) -> String {

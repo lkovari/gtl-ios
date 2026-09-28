@@ -6,6 +6,7 @@ struct MapTab: View {
     @Bindable var model: TrackerModel
     @State private var searchOpen = false
     @State private var layersOpen = false
+    @State private var speedScaleToggled = false
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -26,11 +27,11 @@ struct MapTab: View {
                 HStack(alignment: .bottom) {
                     hud
                     Spacer()
-                    VStack(spacing: 8) {
+                    VStack(alignment: .trailing, spacing: 8) {
                         roundButton("plus", id: "zoomIn") { model.bumpZoom(1) }
                         roundButton("minus", id: "zoomOut") { model.bumpZoom(-1) }
                         roundButton("square.3.layers.3d", id: "mapLayers") { layersOpen = true }
-                        if model.trackPoints.count >= 2 {
+                        if showsSpeedScale {
                             speedLegend
                         }
                         Text(model.effectiveOffline && model.settings.selectedMapId == OsmCatalog.tuhuId ? "© Turistautak.hu" : model.effectiveOffline ? "© OpenStreetMap contributors" : "")
@@ -204,18 +205,81 @@ struct MapTab: View {
         }
     }
 
+    private var showsSpeedScale: Bool {
+        !model.speedRuns.isEmpty || model.liveTail != nil
+    }
+
+    private var activeSpeedBin: Int? {
+        guard model.selectedSessionId == nil, let speed = model.speedMps, speed.isFinite, speed >= 0 else { return nil }
+        return SpeedColorScale.bin(speedMps: speed, usage: model.settings.usageType)
+    }
+
+    private var speedScaleOpen: Bool {
+        model.settings.speedLegendAlwaysOpen || speedScaleToggled
+    }
+
     private var speedLegend: some View {
-        HStack(spacing: 3) {
-            ForEach(0..<SpeedColorScale.thresholds(for: model.settings.usageType).count + 1, id: \.self) { bin in
-                Circle()
-                    .fill(SpeedColor.at(bin).color)
-                    .frame(width: 8, height: 8)
+        let usage = model.settings.usageType
+        let system = model.settings.measurementSystem
+        let bands = SpeedColorScale.bands(for: usage)
+        let ranges = bands.map { SpeedColorScale.legendRange($0, system) }
+        return Group {
+            if model.settings.speedLegendAlwaysOpen {
+                speedScaleBody(bands: bands, ranges: ranges, system: system, open: true)
+            } else {
+                Button {
+                    speedScaleToggled.toggle()
+                } label: {
+                    speedScaleBody(bands: bands, ranges: ranges, system: system, open: speedScaleToggled)
+                }
+                .buttonStyle(.plain)
             }
         }
-        .padding(6)
-        .background(.ultraThinMaterial)
-        .clipShape(Capsule())
         .accessibilityIdentifier("speedLegend")
+        .accessibilityLabel(L10n.text("Speed scale", "Sebességskála"))
+        .accessibilityHint(model.settings.speedLegendAlwaysOpen
+            ? L10n.text("Speed bands for this usage", "Az aktuális használat sebességsávjai")
+            : L10n.text("Tap to show the bands, tap again to hide them", "Koppintásra jönnek a sávok, újabb koppintásra eltűnnek"))
+        .accessibilityValue(speedScaleOpen ? ranges.joined(separator: ", ") : "")
+        .onChange(of: model.settings.speedLegendAlwaysOpen) { _, open in
+            if !open { speedScaleToggled = false }
+        }
+    }
+
+    private func speedScaleBody(bands: [SpeedBand], ranges: [String], system: MeasurementSystem, open: Bool) -> some View {
+        Group {
+            if open {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(Units.hudSpeedUnit(system))
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                    ForEach(Array(bands.enumerated()), id: \.offset) { index, _ in
+                        HStack(spacing: 6) {
+                            Circle()
+                                .fill(SpeedColor.at(index).color)
+                                .frame(width: activeSpeedBin == index ? 10 : 8, height: activeSpeedBin == index ? 10 : 8)
+                            Text(ranges[index])
+                                .font(.caption.monospacedDigit().weight(activeSpeedBin == index ? .bold : .regular))
+                        }
+                    }
+                }
+                .padding(8)
+                .background(.ultraThinMaterial)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+            } else {
+                HStack(spacing: 3) {
+                    ForEach(bands.indices, id: \.self) { index in
+                        Circle()
+                            .fill(SpeedColor.at(index).color)
+                            .frame(width: activeSpeedBin == index ? 9 : 8, height: activeSpeedBin == index ? 9 : 8)
+                    }
+                }
+                .padding(.horizontal, 8)
+                .frame(minHeight: 44)
+                .background(.ultraThinMaterial)
+                .clipShape(Capsule())
+            }
+        }
     }
 
     private var hud: some View {
@@ -277,7 +341,8 @@ struct MapTab: View {
                 VStack(alignment: .leading, spacing: 0) {
                     Text(speed)
                         .font(.system(size: compact ? 28 : 44, weight: .medium, design: .monospaced))
-                        .foregroundStyle(GtlColor.hudCyan)
+                        .foregroundStyle(hudSpeedColor)
+                        .shadow(color: .black.opacity(0.35), radius: 0, y: 1)
                     Text(Units.hudSpeedUnit(model.settings.measurementSystem))
                         .font(.caption)
                         .foregroundStyle(GtlColor.moonCream.opacity(0.8))
@@ -307,6 +372,13 @@ struct MapTab: View {
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .opacity(compact ? 0.85 : 1)
         .accessibilityIdentifier("mapHud")
+    }
+
+    private var hudSpeedColor: Color {
+        guard model.selectedSessionId == nil, let speed = model.speedMps, speed.isFinite, speed >= 0 else {
+            return GtlColor.hudCyan
+        }
+        return SpeedColor.at(SpeedColorScale.bin(speedMps: speed, usage: model.settings.usageType)).color
     }
 
     private var northDial: some View {

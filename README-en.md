@@ -249,7 +249,7 @@ The north dial rotates so N still points north.
 
 ### Speed-colored track
 
-Each stored point already has a speed. The line uses up to six colors, slow to fast: blue `#3D5AFE`, teal `#1F8A80`, yellow `#F2C14E`, orange `#E07A3D`, carmine `#C13B2E`, deep red `#7A1530`. The dots on the map are the scale for the current usage. A speed below a cut stays in the slower band. The bands are fixed for the current usage, so a new maximum speed does not repaint the line already drawn.
+Each stored point already has a speed. The line uses up to six colors, slow to fast: blue `#3D5AFE`, teal `#1F8A80`, yellow `#F2C14E`, orange `#E07A3D`, carmine `#C13B2E`, deep red `#7A1530`. The dots on the map are the scale for the current usage. They appear only while a colored line is on the map. The list shows each band in the chosen unit, and it stays open unless that is turned off in Settings. Then the dots remain: a tap shows the bands, and another tap hides them. The HUD speed number uses the color of the current band. A speed below a cut stays in the slower band. The bands are fixed for the current usage, so a new maximum speed does not repaint the line already drawn.
 
 Run:
 
