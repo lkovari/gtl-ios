@@ -24,6 +24,12 @@ enum L10n {
     static func text(_ en: String, _ hu: String) -> String { hungarian ? hu : en }
 }
 
+enum AppLinks {
+    static let privacyPolicy = URL(string: "https://lkovari.github.io/KLHome/assets/bigfiles/gtl-ios-private-policy.html")!
+    static let supportMail = URL(string: "mailto:laszlo.kovary@gmail.com")!
+    static let turistautakTerms = URL(string: "https://www.turistautak.hu/wiki/Turistautak.hu:Jogi_nyilatkozat")!
+}
+
 struct GtlBackground: View {
     @Environment(\.colorScheme) private var scheme
     var body: some View {

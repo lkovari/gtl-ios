@@ -11,7 +11,7 @@ struct TrackerScreen: View {
                 header
                 Group {
                     switch model.tab {
-                    case .gps: GpsTab(model: model)
+                    case .gps: GpsTab(model: model, openLocationSettings: { path.append("location") })
                     case .route: RouteTab(model: model)
                     case .map: MapTab(model: model)
                     case .compass: CompassTab(model: model)
@@ -51,6 +51,12 @@ struct TrackerScreen: View {
                 path.append("diagnostics")
                 model.showErrorLog = false
             }
+        }
+        .sheet(isPresented: $model.showAlwaysExplanation) {
+            AlwaysExplanationSheet(
+                allow: { model.allowBackgroundLogging() },
+                whileUsing: { model.logOnlyWhileUsingApp() }
+            )
         }
     }
 
@@ -123,8 +129,31 @@ struct TrackerScreen: View {
     }
 }
 
+struct AlwaysExplanationSheet: View {
+    var allow: () -> Void
+    var whileUsing: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text(L10n.text("Location while locked", "Helyzet zárolt képernyőn"))
+                .font(.title2.bold())
+            Text(L10n.text(
+                "Recording on a locked screen needs Location set to Always. The blue indicator stays visible until Stop. Stop ends background updates.",
+                "Zárolt képernyőn a rögzítéshez a Helyzet legyen Mindig. A kék jelző a Stopig látszik. A Stop leállítja a háttérfrissítést."
+            ))
+            Button(L10n.text("Allow Always", "Mindig engedélyezése"), action: allow)
+                .buttonStyle(GtlPrimaryButton(color: GtlColor.startBlue))
+            Button(L10n.text("Only while using the app", "Csak az app használata közben"), action: whileUsing)
+                .buttonStyle(GtlPrimaryButton(color: GtlColor.hudTeal))
+        }
+        .padding(24)
+        .presentationDetents([.medium])
+    }
+}
+
 struct GpsTab: View {
     let model: TrackerModel
+    var openLocationSettings: () -> Void = {}
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
@@ -133,6 +162,12 @@ struct GpsTab: View {
                 metric(L10n.text("Accuracy", "Pontosság"), model.accuracy.map { String(format: "%.0f m", $0) } ?? "—")
                 metric(L10n.text("GPS / Baro", "GPS / Baro"), altitudeLine)
                 metric(L10n.text("Status", "Állapot"), statusLine)
+                if model.locationAuthorization == .denied || model.locationAuthorization == .restricted || model.preciseLocationRequired {
+                    Text(locationGate)
+                        .font(.body)
+                    Button(L10n.text("Location settings", "Helyzet beállítások"), action: openLocationSettings)
+                        .buttonStyle(.bordered)
+                }
                 if model.settings.showFixCloud {
                     metric("n", "\(model.fixCloud.stats.sampleCount)")
                     metric("RMS", model.fixCloud.stats.rmsMeters.map { String(format: "%.1f m", $0) } ?? "—")
@@ -149,7 +184,26 @@ struct GpsTab: View {
         return "\(gps) / \(baro)"
     }
 
+    private var locationGate: String {
+        if model.preciseLocationRequired {
+            return L10n.text(
+                "Precise location is required. Turn on Precise Location in Settings.",
+                "Pontos hely kell. Kapcsold be a Pontos helyet a Beállításokban."
+            )
+        }
+        return L10n.text(
+            "Location is off. Turn it on in Settings to record a route.",
+            "A helyzet ki van kapcsolva. Az útvonal rögzítéséhez kapcsold be a Beállításokban."
+        )
+    }
+
     private var statusLine: String {
+        if model.locationAuthorization == .denied || model.locationAuthorization == .restricted {
+            return L10n.text("Location is off", "A helyzet ki van kapcsolva")
+        }
+        if model.preciseLocationRequired {
+            return L10n.text("Precise location is required", "Pontos hely kell")
+        }
         if model.logging && model.poorGps { return L10n.text("GPS quality is too low", "A GPS minősége túl alacsony") }
         if model.logging { return L10n.text("Logging", "Naplózás") }
         if model.latitude == nil { return L10n.text("Waiting for GPS", "Várakozás a GPS-re") }

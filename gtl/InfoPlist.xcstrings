@@ -80,6 +80,24 @@
           }
         }
       }
+    },
+    "PreciseRoute" : {
+      "comment" : "Temporary full accuracy purpose key",
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Precise location is required to record a usable route."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A használható nyomvonalhoz pontos hely kell."
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

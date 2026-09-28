@@ -103,6 +103,10 @@ final class TrackerModel {
     var poorGps = false
     var recordsWhileLocked = false
     var showErrorLog = false
+    var showAlwaysExplanation = false
+    var locationAuthorization: CLAuthorizationStatus = .notDetermined
+    var preciseLocationRequired = false
+    var pendingCellularDownload: PendingMapDownload?
     private var versionTaps: [Date] = []
     private var lastTravelDegrees: Float?
     private var compassMagnetic: Float?
@@ -148,6 +152,7 @@ final class TrackerModel {
         motion = MotionSession()
         downloader = MapDownloader()
         altimeterAvailable = motion.altimeterAvailable
+        locationAuthorization = location.authorization
         wire()
         refreshMaps()
         scheduleIndex()
@@ -260,26 +265,47 @@ final class TrackerModel {
     }
 
     func startLogging() {
+        preciseLocationRequired = false
         switch location.authorization {
         case .notDetermined:
             location.requestWhenInUse()
-            status = "Precise location is required to start logging"
-            return
         case .denied, .restricted:
-            status = "Turn on GPS"
-            return
+            locationAuthorization = location.authorization
         case .authorizedWhenInUse:
-            location.requestAlways()
+            showAlwaysExplanation = true
         case .authorizedAlways:
-            break
+            continueAfterLocationChoice(requestAlways: false)
         @unknown default:
             break
         }
+    }
+
+    func allowBackgroundLogging() {
+        showAlwaysExplanation = false
+        continueAfterLocationChoice(requestAlways: true)
+    }
+
+    func logOnlyWhileUsingApp() {
+        showAlwaysExplanation = false
+        continueAfterLocationChoice(requestAlways: false)
+    }
+
+    private func continueAfterLocationChoice(requestAlways: Bool) {
+        if requestAlways {
+            location.requestAlways()
+        }
         guard location.authorization == .authorizedAlways || location.authorization == .authorizedWhenInUse else {
-            status = "Precise location is required to start logging"
             return
         }
-        Task { await beginSession() }
+        Task {
+            let precise = await location.ensurePreciseRoute()
+            guard precise else {
+                preciseLocationRequired = true
+                return
+            }
+            preciseLocationRequired = false
+            await beginSession()
+        }
     }
 
     func stopLogging() {
@@ -399,7 +425,7 @@ final class TrackerModel {
             }
         default:
             centerOnNextFix = false
-            status = "Precise location is required to start logging"
+            locationAuthorization = location.authorization
         }
     }
 
@@ -726,8 +752,66 @@ final class TrackerModel {
         }
     }
 
-    func download(_ region: OsmRegion) { downloader.downloadOsm(region) }
-    func downloadTuhu() { downloader.downloadTuhu() }
+    func download(_ region: OsmRegion) {
+        Task {
+            await prepareDownload(url: region.url, id: region.id, title: region.label, cap: DownloadBudget.maxOsmBytes, restrictURL: false)
+        }
+    }
+
+    func downloadTuhu() {
+        Task {
+            await prepareDownload(
+                url: OsmCatalog.tuhuURL,
+                id: OsmCatalog.tuhuId,
+                title: "Turistautak.hu",
+                cap: DownloadBudget.maxTuhuDownloadBytes,
+                restrictURL: true
+            )
+        }
+    }
+
+    func confirmCellularDownload() {
+        guard let pending = pendingCellularDownload else { return }
+        pendingCellularDownload = nil
+        startPrepared(pending)
+    }
+
+    func cancelCellularDownload() {
+        pendingCellularDownload = nil
+    }
+
+    private func prepareDownload(url: URL, id: String, title: String, cap: Int64, restrictURL: Bool) async {
+        downloadError = nil
+        if restrictURL && !DownloadBudget.tuhuURLAllowed(url) {
+            downloadError = L10n.text("Download address is not allowed", "A letöltési cím nem engedélyezett")
+            return
+        }
+        guard let length = await DownloadSize.contentLength(of: url) else {
+            downloadError = L10n.text("The download size could not be read.", "A letöltés mérete nem olvasható.")
+            return
+        }
+        let space = MapDownloader.freeSpace()
+        if length > cap {
+            downloadError = L10n.text("The file is larger than this download allows.", "A fájl nagyobb, mint amit ez a letöltés enged.")
+            return
+        }
+        guard DownloadBudget.canStart(contentLength: length, usableSpace: space, cap: cap) else {
+            downloadError = L10n.text("Not enough free space", "Nincs elég szabad hely")
+            return
+        }
+        let pending = PendingMapDownload(id: id, title: title, bytes: length, url: url, cap: cap)
+        if await CellularAccess.usesCellular() {
+            pendingCellularDownload = pending
+            return
+        }
+        startPrepared(pending)
+    }
+
+    private func startPrepared(_ pending: PendingMapDownload) {
+        let space = MapDownloader.freeSpace()
+        let budget = min(pending.cap, space - DownloadBudget.reserveBytes)
+        downloader.start(pending.url, id: pending.id, byteBudget: max(budget, 0))
+    }
 
     func onTabChange() {
         if logging {
@@ -767,8 +851,9 @@ final class TrackerModel {
             self.compassShift = heading.trueHeading >= 0 ? Float(heading.trueHeading - heading.magneticHeading) : nil
             self.refreshTravelHeading()
         }
-        location.onAuthorization = { [weak self] _ in
+        location.onAuthorization = { [weak self] status in
             guard let self else { return }
+            self.locationAuthorization = status
             self.recordsWhileLocked = self.location.recordsWhileLocked
             if self.logging {
                 UIApplication.shared.isIdleTimerDisabled = self.settings.keepScreenOnWhileLogging || !self.recordsWhileLocked
@@ -997,6 +1082,7 @@ final class TrackerModel {
                     try FileManager.default.moveItem(at: temp, to: destination)
                 }
                 try? FileManager.default.removeItem(at: temp)
+                MapPaths.excludeFromBackup(destination)
                 downloadFraction[id] = 1
                 refreshMaps()
             } catch {

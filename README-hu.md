@@ -115,23 +115,104 @@ Offline térkép egyszerre egy letöltött régió:
 - OpenStreetMap régiók a `https://download.mapsforge.org/maps/v5/` címről, 2 GB-os plafonnal és 64 MB szabadhely-tartalékkal
 - Turistautak.hu csak a `https://turistautak.elte.hu/tuhu/tuhu_mapsforge.zip` címről
 
-A MapKit ezeket a fájlokat nem rajzolja. Az app a látható csempéket olvassa a Mapsforge fájlból, és MapLibre-rel rajzolja. A dekódolás a fő szálon kívül fut, a kamera mozdulásakor megszakad, és nem tölti be az egész országot a memóriába. A MapLibre csak addig jön létre, amíg offline térkép van használatban.
+A letöltés előbb a fájl tényleges méretét olvassa. Ha a méret nem olvasható, nagyobb a plafonnál, vagy a szabad hely a 64 MB tartalékkal nem elég, a letöltés nem indul. Mobilhálózaton a méret megerősítés után indul. Menet közben a letöltés megáll, ha a leírt bájt átlépné a szabad helyet a tartalékkal, vagy a plafont. A letöltött térképfájl kimarad a készülék mentéséből.
 
-A térkép OpenStreetMap ODbL forrásmegjelölést mutat, vagy Turistautak.hu-t, ha az a térkép van használatban. Domborzatárnyékolás csak akkor van, ha magasságfájlok ülnek a térkép mellett.
+A MapKit ezeket a fájlokat nem rajzolja. Az app a látható csempéket olvassa a Mapsforge fájlból, és MapLibre Native-nel rajzolja (BSD 2-Clause). A dekódolás a fő szálon kívül fut, a kamera mozdulásakor megszakad, és nem tölti be az egész országot a memóriába. A MapLibre csak addig jön létre, amíg offline térkép van használatban. A névjegy a MapLibre copyright sorait is kiírja.
+
+Offline OSM térképnél a sarokfelirat `© OpenStreetMap contributors`. Turistautak térképnél `© Turistautak.hu`, a névjegy a lapra és a jogi nyilatkozatra hivatkozik. Domborzatárnyékolás csak akkor van, ha magasságfájlok ülnek a térkép mellett.
 
 Az offline térkép helykeresése készüléken lévő indexet használ. A keresés 3 karakternél indul, és legfeljebb 5 találatot ad.
 
 ## Adatvédelem
 
-A privacy manifest pontos helyet kér az app működéséhez, és a UserDefaults oka `CA92.1`. Az app nem követ. Az `ITSAppUsesNonExemptEncryption` hamis.
+A privacy manifest pontos helyet kér az app működéséhez. A required reason API okok: UserDefaults `CA92.1`, fájlidő `C617.1`, lemezhely `E174.1`. Az app nem követ. Az `ITSAppUsesNonExemptEncryption` hamis.
+
+A naplózott nyomvonal, a gyorsulás és a dőlés a telefon SQLite adatbázisában marad. Az iPhone mentése ezt az adatbázist tartalmazza. A letöltött térképfájl a mentésből ki van zárva. A térkép, a keresés, az útvonal és a cím az Apple-nek küldi az ehhez szükséges koordinátát vagy térképablakot. Az OSM- és a Turistautak-letöltésnél a kiszolgáló látja az IP-címet és a kért fájlt. A naplózott track nem kerül a fejlesztő szerverére. Ezt mondja az első képernyő és a Súgó használati bekezdése is.
+
+Az adatvédelmi nyilatkozat: `https://lkovari.github.io/KLHome/assets/bigfiles/gtl-ios-private-policy.html`. Ugyanez az App Store Connect Support URL. A forrás a `docs/gtl-ios-private-policy.html` fájl; a lapot a feltöltés előtt a KLHome oldalra kell másolni. A névjegyben a `laszlo.kovary@gmail.com` cím is ott van. A link az első képernyőn, a Beállításokban és a Súgóban is elérhető.
+
+Az első képernyő Elutasítom gombja nem lép ki. A rögzítés az Elfogadomig nem indul. When In Use mellett az Indítás előbb elmondja, miért kell a Mindig engedély a zárolt képernyőhöz; a csak az app használata közben ág Always kérés nélkül indul. Csökkentett pontosságnál a rögzítés a Pontos hely nélkül nem indul. Elutasított helyengedélynél a GPS fül a Helyzet beállítások képernyőre visz.
 
 A cél-szövegek angolul és magyarul:
 
 - Helyzet az app használata közben
 - Helyzet mindig és használat közben
 - Mozgás
+- Ideiglenes pontos hely a nyomvonalhoz (`PreciseRoute`)
 
 Az egyetlen háttérmód a Helyzet. A zárolt képernyő viselkedése a [Rögzítés zárolt képernyőn](#rögzítés-zárolt-képernyőn) részben van.
+
+## Ami a korábbi viselkedéshez képest változott
+
+Ezek a változások az App Store review miatt kerültek be. A rögzítés, a térkép, a mentett útvonal és az export megmaradt. Néhány művelet, ami régen azonnal lefutott, most egy ellenőrzésen vagy egy választáson megy át. Ahol a feltétel megvan, a művelet ugyanúgy folytatódik.
+
+### Elutasítom
+
+Régen az első képernyő Elutasítom gombja `exit(0)` hívással megszakította az alkalmazás folyamatát. Az iOS-en a felületen nincs Kilépés: a folyamatot a rendszer zárja be. A review ezt kész, használható app és tervezés alatt szokta visszaküldeni.
+
+Most a gomb a nyilatkozat képernyőn hagy. Megjelenik a mondat, hogy a rögzítés addig nem indul, amíg a felhasználó el nem fogadja. Az Elfogadom továbbra is a `disclaimer` UserDefaults kulcsot írja, és utána a nyomkövető nyílik meg.
+
+### Nyitó szöveg és a Súgó
+
+Régen az első képernyő és a Súgó használati bekezdése azt mondta, hogy a helyzet nem megy szerverre, illetve hogy semmi nem kerül fel. A Térkép súgó közben már leírta, hogy az útvonal és a cím kérése koordinátát küld az Apple-nek. A három szöveg ellentmondott egymásnak. Az irányelv szerint a felhasználót nem lehet félrevezetni arról, hogy az adata elhagyja-e a készüléket.
+
+Most mindkét hely külön mondja a kettőt. A naplózott track nem kerül a fejlesztő szerverére. A térkép, a keresés, az útvonal és a cím az Apple-nek küldi az ehhez szükséges koordinátát. A Térkép súgó mondatai változatlanok, azok voltak a minta.
+
+### Adatvédelmi link
+
+Régen a link csak a Súgó egy alapból összecsukott során volt, és a felirata a hosztnév volt. A reviewer az első képernyőt és a Beállításokat nézi. Az irányelv a nyilatkozatot az appban könnyen elérhető helyre kéri.
+
+Most ugyanaz az URL van az első képernyőn, a Beállításokban és a Súgóban. A felirat mindhárom helyen „Adatvédelmi nyilatkozat” vagy „Privacy policy”. A cím: `https://lkovari.github.io/KLHome/assets/bigfiles/gtl-ios-private-policy.html`. A lap forrása a `docs/gtl-ios-private-policy.html`. Feltöltés előtt ezt a fájlt a KLHome oldalra kell másolni, különben a reviewer a régi Androidos szöveget olvassa. Az App Store Connect Support URL mezője ugyanez a lap legyen.
+
+A lap iOS adatfolyamot ír: a nyomvonal, a gyorsulás és a dőlés a telefon SQLite adatbázisában marad; a mentés a track adatbázist viszi, a letöltött térképfájlt nem; a MapKit, a keresés, az útvonal és a cím koordinátát vagy térképablakot küld az Apple-nek; az OSM- és a Turistautak-letöltésnél a kiszolgáló látja az IP-címet és a kért fájlt; háttérhely csak naplózás közben és Always engedéllyel; nincs fiók, hirdetés, követés.
+
+### Privacy manifest
+
+A manifest régen csak a UserDefaults okot deklarálta (`CA92.1`). A helyindex a térképfájl módosítási idejét olvassa, a letöltés előtt a kód a szabad lemezhelyet kéri le. Ezek kötelező ok-API-k. Hiányzó deklarációnál a feltöltés ITMS-91053 levéllel megáll, a build nem kerül review-ra.
+
+A manifestben maradt a pontos hely, app-funkció, nem kapcsolt, nem követésre. Mellé került a fájlidő `C617.1` és a lemezhely `E174.1`. Ez a felhasználói lépéseket nem változtatja. A feloldott MapLibre 6.31.0 keretrendszer saját `PrivacyInfo.xcprivacy` fájllal érkezik, ezért külön manifestet nem kellett beleírni.
+
+### Mindig engedély
+
+Régen, ha a hely csak az app használata közben volt engedélyezve, az Indítás azonnal a rendszerszintű Always párbeszédet nyitotta, és ugyanabban a lépésben elindította a munkamenetet. A felhasználó a párbeszéd előtt nem látott saját mondatot arról, hogy a zárolt képernyős rögzítéshez kell a Mindig.
+
+Most az Indítás egy saját lapot mutat. A lap azt írja, hogy zárolt képernyőn a rögzítéshez a Helyzet legyen Mindig, a kék jelző a Stopig látszik, és a Stop leállítja a háttérfrissítést. A Mindig engedélyezése ezután hívja a rendszer Always kérdését, és elindítja a munkamenetet. A csak az app használata közben ág Always kérés nélkül indítja a képernyőn lévő rögzítést. Ha a felhasználó később Always-t ad, ugyanaz a munkamenet bekapcsolja a háttérfrissítést és a kék jelzőt. Always engedélynél az Indítás továbbra is azonnal rögzít, magyarázó lap nélkül, mert a rendszerkérdés már nem esedékes.
+
+### Csökkentett pontosság
+
+Régen a felhasználó a rendszer párbeszédben választhatott hozzávetőleges helyet. A rögzítés így is elindult, és a track használhatatlan pontokból állt.
+
+Most, ha a pontosság csökkentett, a naplózás előtt a rendszer ideiglenes teljes pontosságot kér. Az indok kulcsa `PreciseRoute`: a használható nyomvonalhoz pontos hely kell, angolul és magyarul. Ha a felhasználó nem adja meg, a munkamenet nem indul. A GPS fül kiírja, hogy a Beállításokban a Pontos hely kell, és van gomb a Helyzet beállítások képernyőre.
+
+### Elutasított hely
+
+Régen denied vagy restricted állapotban az Indítás egy láthatatlan állapotmezőbe írt, és a GPS fül „Várakozás a GPS-re” szöveget mutatott. A gomb halottnak látszott.
+
+Most a GPS fül kiírja, hogy a helyzet ki van kapcsolva, és egy gomb a már meglévő Helyzet beállítások képernyőre visz. Onnan a rendszer Beállításai nyílnak. A láthatatlan angol állapot ezekre az ágakra nem íródik.
+
+### Offline térkép letöltése
+
+Régen a szabadhely-ellenőrzés 0 bájtos hosszal futott. 64 MB-nál több szabad helynél a letöltés elindult, a tényleges fájlméret nélkül. A háttérletöltés mobilhálózaton is mehetett, megerősítés és kiírt méret nélkül. Menet közben a megszakítás a 2 GB-os OSM vagy az 500 MB-os Turistautak plafonnál volt, nem a még szabad helynél. Két saját hiba csak angolul jelent meg.
+
+Most a letöltés előtt egy HEAD kérés olvassa a `Content-Length` értéket. A Magyarország OSM fájl és a Turistautak zip ezt a választ megadja. Ha a hossz nem olvasható, a fájl nagyobb a plafonnál, vagy a szabad hely a 64 MB tartalékkal nem elég, a letöltés nem indul, magyar és angol hibaüzenettel. Mobilhálózaton egy megerősítés kell, a régió nevével és a várható mérettel. Megerősítés után a mobiladat engedélyezett marad. Wi-Fin a megerősítés kimarad, és a letöltés elindul, ha a méret és a hely rendben van. Menet közben a letöltés megáll, ha a leírt bájt átlépi a kezdéskor számolt keretet, vagy a szabad hely a tartalék alá esik. A `URLSession` saját hibája továbbra is a rendszer nyelvén jön.
+
+### Mentés
+
+Régen a track adatbázis és a térképfájlok is az Application Supportban voltak, és az iPhone mentése, az iCloudot is beleértve, mindkettőt vihette. A nyilatkozatnak és a binárisnak ugyanazt kell mondania a pontos hely sorsáról.
+
+A track adatbázis továbbra is a mentésben van. A nyilatkozat ezt kimondja. Az Exports mappa a Fájlok appban marad, azt a felhasználó szándékosan menti ki. A `maps` könyvtár és a letöltött térképfájl `isExcludedFromBackup` jelzőt kap, mert egy országfájl több száz megabájt, és nem való a mentésbe.
+
+### Térkép-felirat és névjegy
+
+Régen az offline OSM sarokfelirat `© OpenStreetMap` volt. Az ODbL a produced workön a `© OpenStreetMap contributors` formát kéri, azon a képernyőn, ahol a térképadat látszik. Most ez a felirat van a sarokban, amíg letöltött OSM fájl van használatban. A névjegy ODbL mondata megmaradt.
+
+A Turistautak sarokfelirat továbbra is `© Turistautak.hu`. A névjegy hozzáteszi, hogy a feltételek egyértelmű hivatkozást kérnek a lapra, ahol az adat látszik, és a fájl a saját használatra kerül a telefonra. Van link a `https://turistautak.hu` címre és a jogi nyilatkozatra. A letöltés bent maradt, mert a feltétel a saját használatra mentést engedi, ha a hivatkozás látszik.
+
+A névjegy kapott egy MapLibre sort: MapLibre Native, BSD 2-Clause, és a 6.31.0 csomag copyright mondatai (MapLibre contributors, MapTiler.com, Mapbox). A bináris terjesztés ezt a szöveget kéri. Új a Támogatás sor: a nyilatkozat linkje és a `laszlo.kovary@gmail.com` cím. A Bitbucket tároló sora megmaradt, az nem a támogatás. Az App Store Connect Support URL a nyilatkozat lapja, nem a tároló gyökere.
+
+### Ami nem változott
+
+Az Elfogadom után a nyomkövető ugyanúgy nyílik. Always engedéllyel a zárolt képernyős rögzítés és a kék jelző a Stopig megmarad. Az app használata közben a zárolás továbbra is megállítja az új pontokat. Az online MapKit, a helykeresés, a koppintott útvonal, a cím, a mentett útvonalak, a GPX és a KMZ export a helyén van. A track adatbázis a telefonon marad, és a mentés viszi.
 
 ## Valódi iPhone
 

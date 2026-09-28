@@ -103,6 +103,9 @@ struct SettingsScreen: View {
                     }
                 }
             }
+            Section {
+                Link(L10n.text("Privacy policy", "Adatvédelmi nyilatkozat"), destination: AppLinks.privacyPolicy)
+            }
         }
         .navigationTitle(L10n.text("Settings", "Beállítások"))
         .navigationBarTitleDisplayMode(.inline)
@@ -139,6 +142,23 @@ struct MapDownloadScreen: View {
         }
         .navigationTitle(L10n.text("Offline maps", "Offline térképek"))
         .navigationBarTitleDisplayMode(.inline)
+        .alert(
+            L10n.text("Download on mobile data?", "Letöltés mobilhálózaton?"),
+            isPresented: Binding(
+                get: { model.pendingCellularDownload != nil },
+                set: { _ in }
+            )
+        ) {
+            Button(L10n.text("Download", "Letöltés")) { model.confirmCellularDownload() }
+            Button(L10n.text("Cancel", "Mégsem"), role: .cancel) { model.cancelCellularDownload() }
+        } message: {
+            if let pending = model.pendingCellularDownload {
+                Text(L10n.text(
+                    "\(pending.title) is \(ByteCountFormatter.string(fromByteCount: pending.bytes, countStyle: .file)). This download uses mobile data.",
+                    "\(pending.title) mérete \(ByteCountFormatter.string(fromByteCount: pending.bytes, countStyle: .file)). A letöltés mobiladatot használ."
+                ))
+            }
+        }
     }
 
     private func row(id: String, title: String, country: String, download: @escaping () -> Void) -> some View {
@@ -239,8 +259,8 @@ struct HelpScreen: View {
             VStack(spacing: 8) {
                 section(L10n.text("Usage", "Használati mód"), id: "usage") {
                     Text(L10n.text(
-                        "Allow location when asked. GPS and Compass update while this screen is open. Tap Start to record a route into the database on this phone, draw it on the Map, and fill the Route totals. Tap Stop to end the session. Menu → Saved tracks to delete a route, show it on the map, or share KMZ or GPX. Settings picks usage (motorbike is the default), units, and whether the last track stays on the map. Menu → Download offline map for OSM regions or Turistautak (Hungary). Nothing is uploaded.",
-                        "A helyhozzáférést az első kérdésnél engedélyezd. A GPS és az iránytű a képernyőn él. Az Indít a telefon adatbázisába rögzíti az útvonalat, kirajzolja a Térképen, és kitölti az Útvonal összesítőket. A Leállít bezárja a munkamenetet. Menü → Mentett útvonalak: törlés, megjelenítés, vagy KMZ / GPX. A Beállításokban a használat (alapból motor), a mértékegység, és hogy maradjon-e az utolsó track. Menü → Offline térkép: OSM-régió vagy Turistautak (Magyarország). Semmi nem kerül fel szerverre."
+                        "Allow location when asked. GPS and Compass update while this screen is open. Tap Start to record a route into the database on this phone, draw it on the Map, and fill the Route totals. Tap Stop to end the session. Menu → Saved tracks to delete a route, show it on the map, or share KMZ or GPX. Settings picks usage (motorbike is the default), units, and whether the last track stays on the map. Menu → Download offline map for OSM regions or Turistautak (Hungary). The logged track is not uploaded to our server. The map, search, a route, and an address send Apple the coordinate needed for that request.",
+                        "A helyhozzáférést az első kérdésnél engedélyezd. A GPS és az iránytű a képernyőn él. Az Indít a telefon adatbázisába rögzíti az útvonalat, kirajzolja a Térképen, és kitölti az Útvonal összesítőket. A Leállít bezárja a munkamenetet. Menü → Mentett útvonalak: törlés, megjelenítés, vagy KMZ / GPX. A Beállításokban a használat (alapból motor), a mértékegység, és hogy maradjon-e az utolsó track. Menü → Offline térkép: OSM-régió vagy Turistautak (Magyarország). A naplózott track nem kerül a szerverünkre. A térkép, a keresés, az útvonal és a cím az Apple-nek küldi az ehhez szükséges koordinátát."
                     ))
                 }
                 section(L10n.text("Settings", "Beállítások"), id: "settings") {
@@ -250,10 +270,16 @@ struct HelpScreen: View {
                     ))
                 }
                 section(L10n.text("Track logging", "Nyomvonal rögzítés"), id: "logging") {
-                    Text(L10n.text(
-                        "Kalman smooths stored points when Smooth recorded track is on. Simplify only thins the line drawn on the map. The stored route and shared KMZ or GPX keep every accepted point. Smart density uses speed bands. Run/Hike and bicycle keep points closer together. Recording quality uses horizontal accuracy. Fixes older than 10 seconds are dropped. Logging continues after the screen locks when Location is Always. That starts as soon as Always is granted, including during the same Start, and the blue indicator stays until Stop. While Using the App records only while this app is on screen. Keep screen on while logging only keeps the display awake.",
-                        "A Kalman a letárolt pontokat simítja, ha a Rögzített útvonal simítása be van. Az egyszerűsítés csak a térképen rajzolt vonalat ritkítja. A tárolt útvonal és a megosztott KMZ vagy GPX minden elfogadott pontot megtart. Az okos sűrűség sebességsávokat használ. Futásnál és kerékpárnál sűrűbbek a pontok. A rögzítés a vízszintes pontosságot használja. A 10 másodpercnél régebbi fixek kiesnek. Zárolt képernyőn a naplózás akkor megy tovább, ha a Helyzet Mindig. Ez az engedély megadásakor azonnal él, még ugyanazon az Indításon, és a kék jelző a Stopig látszik. Az app használata közben csak addig rögzít, amíg ez a képernyő nyitva van. A képernyő bekapcsolva hagyása csak a kijelzőt tartja ébren."
-                    ))
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(L10n.text(
+                            "Start records in the foreground as soon as location is allowed. The track continues after the screen locks only when Location is Always. The blue indicator stays until Stop. If Always is granted during that same Start, background recording turns on immediately. While Using the App, locking the screen stops new points, and a line under the title says so. Settings → Recording → Keep screen on while logging only keeps the display awake. It does not replace Always.",
+                            "Az Indítás az előtérben rögzít, amint a hely engedélyezett. Zárolt képernyőn a nyomvonal csak akkor megy tovább, ha a Helyzet Mindig. A kék jelző a Stopig látszik. Ha a Mindig ugyanazon az Indításon jön meg, a háttérrögzítés azonnal bekapcsol. Az app használata közben a zárolás megállítja az új pontokat, és a cím alatt egy sor ezt kiírja. Beállítások → Rögzítés → Képernyő bekapcsolva naplózás közben csak a kijelzőt tartja ébren. Nem helyettesíti a Mindig engedélyt."
+                        ))
+                        Text(L10n.text(
+                            "Kalman smooths stored points when Smooth recorded track is on. Simplify only thins the line drawn on the map. The stored route and shared KMZ or GPX keep every accepted point. Smart density uses speed bands. Run/Hike and bicycle keep points closer together. Recording quality uses horizontal accuracy. Fixes older than 10 seconds are dropped.",
+                            "A Kalman a letárolt pontokat simítja, ha a Rögzített útvonal simítása be van. Az egyszerűsítés csak a térképen rajzolt vonalat ritkítja. A tárolt útvonal és a megosztott KMZ vagy GPX minden elfogadott pontot megtart. Az okos sűrűség sebességsávokat használ. Futásnál és kerékpárnál sűrűbbek a pontok. A rögzítés a vízszintes pontosságot használja. A 10 másodpercnél régebbi fixek kiesnek."
+                        ))
+                    }
                 }
                 section("GPS", id: "gps") {
                     Text(L10n.text(
@@ -305,7 +331,7 @@ struct HelpScreen: View {
                     ))
                 }
                 section(L10n.text("Privacy policy", "Adatvédelmi nyilatkozat"), id: "privacy") {
-                    Link(L10n.text("Privacy policy", "Adatvédelmi nyilatkozat"), destination: URL(string: "https://lkovari.github.io/KLHome/assets/bigfiles/gtl-ios-private-policy.html")!)
+                    Link(L10n.text("Privacy policy", "Adatvédelmi nyilatkozat"), destination: AppLinks.privacyPolicy)
                         .foregroundStyle(GtlColor.titleMagenta)
                 }
                 section(L10n.text("A stored trackpoint", "Egy tárolt pont"), id: "point") {
@@ -377,10 +403,30 @@ struct AboutScreen: View {
                 } content: {
                     VStack(alignment: .leading, spacing: 8) {
                         Text(L10n.text(
-                            "After you download the Turistautak map, Map can show Hungarian hiking waymarks and contours. Map data from Turistautak.hu.",
-                            "A Turistautak térkép letöltése után a Térkép magyar turistajelzéseket és szintvonalat tud mutatni. Térképadat: Turistautak.hu."
+                            "After you download the Turistautak map, Map can show Hungarian hiking waymarks and contours. Map data © Turistautak.hu. Their terms require a clear reference to the site wherever the data is shown. The file is saved on this phone for your own use.",
+                            "A Turistautak térkép letöltése után a Térkép magyar turistajelzéseket és szintvonalat tud mutatni. Térképadat © Turistautak.hu. A feltételek egyértelmű hivatkozást kérnek a lapra, ahol az adat látszik. A fájl a saját használatodra kerül a telefonra."
                         ))
                         aboutLink(L10n.text("Turistautak.hu website", "Turistautak.hu weboldal"), "https://turistautak.hu")
+                        Link(L10n.text("Turistautak.hu terms", "Turistautak.hu feltételek"), destination: AppLinks.turistautakTerms)
+                            .foregroundStyle(GtlColor.titleMagenta)
+                    }
+                }
+                AccordionCard(title: "MapLibre", expanded: expanded == "maplibre") {
+                    expanded = expanded == "maplibre" ? "" : "maplibre"
+                } content: {
+                    Text(L10n.text(
+                        "Offline maps are drawn with MapLibre Native, BSD 2-Clause License. Copyright (c) 2021 MapLibre contributors. Copyright (c) 2018-2021 MapTiler.com. Copyright (c) 2014-2020 Mapbox.",
+                        "Az offline térképet a MapLibre Native rajzolja, BSD 2-Clause licenc. Copyright (c) 2021 MapLibre contributors. Copyright (c) 2018-2021 MapTiler.com. Copyright (c) 2014-2020 Mapbox."
+                    ))
+                }
+                AccordionCard(title: L10n.text("Support", "Támogatás"), expanded: expanded == "support") {
+                    expanded = expanded == "support" ? "" : "support"
+                } content: {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Link(L10n.text("Privacy policy", "Adatvédelmi nyilatkozat"), destination: AppLinks.privacyPolicy)
+                            .foregroundStyle(GtlColor.titleMagenta)
+                        Link("laszlo.kovary@gmail.com", destination: AppLinks.supportMail)
+                            .foregroundStyle(GtlColor.titleMagenta)
                     }
                 }
                 AccordionCard(title: L10n.text("Original repository", "Eredeti tároló"), expanded: expanded == "repo") {

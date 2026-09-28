@@ -46,6 +46,7 @@ struct RootView: View {
 struct DisclaimerScreen: View {
     @Bindable var model: TrackerModel
     @Environment(\.colorScheme) private var scheme
+    @State private var refused = false
 
     var body: some View {
         ZStack {
@@ -55,15 +56,24 @@ struct DisclaimerScreen: View {
                     .font(.title.bold())
                     .foregroundStyle(GtlColor.titleMagenta)
                 Text(L10n.text(
-                    "GTL records your route on this phone only. It does not send location to any server. Do not interact with the app while driving. You use it at your own risk. While logging, iOS shows the location indicator.",
-                    "A GTL csak ezen a telefonon rögzíti az útvonalat. A helyzetet nem küldi szerverre. Vezetés közben ne használd az appot. Saját felelősségre használod. Naplózás közben az iOS helyjelzője látható."
+                    "GTL records your route on this phone. The logged track is not uploaded to our server. The map, search, a route, and an address send Apple the coordinate needed for that request. Do not interact with the app while driving. You use it at your own risk. While logging, iOS shows the location indicator.",
+                    "A GTL ezen a telefonon rögzíti az útvonalat. A naplózott track nem kerül a szerverünkre. A térkép, a keresés, az útvonal és a cím az Apple-nek küldi az ehhez szükséges koordinátát. Vezetés közben ne használd az appot. Saját felelősségre használod. Naplózás közben az iOS helyjelzője látható."
                 ))
                 .foregroundStyle(scheme == .dark ? GtlColor.moonCream : GtlColor.nightInk)
+                Link(L10n.text("Privacy policy", "Adatvédelmi nyilatkozat"), destination: AppLinks.privacyPolicy)
+                    .foregroundStyle(GtlColor.titleMagenta)
+                if refused {
+                    Text(L10n.text(
+                        "Recording stays off until you accept.",
+                        "A rögzítés addig nem indul, amíg el nem fogadod."
+                    ))
+                    .foregroundStyle(scheme == .dark ? GtlColor.moonCream : GtlColor.nightInk)
+                }
                 Spacer()
                 Button(L10n.text("Accept", "Elfogadom")) { model.acceptDisclaimer() }
                     .buttonStyle(GtlPrimaryButton(color: GtlColor.startBlue))
                     .accessibilityIdentifier("acceptDisclaimer")
-                Button(L10n.text("Refuse", "Elutasítom")) { exit(0) }
+                Button(L10n.text("Refuse", "Elutasítom")) { refused = true }
                     .buttonStyle(GtlPrimaryButton(color: GtlColor.trackingOrange))
             }
             .padding(24)

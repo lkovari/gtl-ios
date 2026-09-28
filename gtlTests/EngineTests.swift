@@ -94,6 +94,14 @@ final class EngineTests: XCTestCase {
         XCTAssertTrue(BackgroundLogging.isActive(recording: true, authorization: .authorizedAlways))
     }
 
+    func testCanStartUsesRealLength() {
+        let space = DownloadBudget.reserveBytes + 10_000_000
+        XCTAssertTrue(DownloadBudget.canStart(contentLength: 1_000_000, usableSpace: space, cap: DownloadBudget.maxOsmBytes))
+        XCTAssertFalse(DownloadBudget.canStart(contentLength: 10_000_001, usableSpace: space, cap: DownloadBudget.maxOsmBytes))
+        let room = DownloadBudget.maxOsmBytes + DownloadBudget.reserveBytes + 1
+        XCTAssertFalse(DownloadBudget.canStart(contentLength: DownloadBudget.maxOsmBytes + 1, usableSpace: room, cap: DownloadBudget.maxOsmBytes))
+    }
+
     func testUsageDefaults() {
         XCTAssertEqual(UsageType.AIRCRAFT.defaultMeasurementSystem(), .ICAO)
         XCTAssertEqual(UsageType.RUNNER.pauseSpeedMps(), 0.25)

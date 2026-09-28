@@ -31,9 +31,23 @@ final class LocationSession: NSObject, CLLocationManagerDelegate {
         BackgroundLogging.isActive(recording: recording, authorization: manager.authorizationStatus)
     }
 
+    var accuracyAuthorization: CLAccuracyAuthorization { manager.accuracyAuthorization }
+
     func requestWhenInUse() { manager.requestWhenInUseAuthorization() }
 
     func requestAlways() { manager.requestAlwaysAuthorization() }
+
+    func ensurePreciseRoute() async -> Bool {
+        if manager.accuracyAuthorization == .fullAccuracy { return true }
+        return await withCheckedContinuation { continuation in
+            manager.requestTemporaryFullAccuracyAuthorization(withPurposeKey: "PreciseRoute") { error in
+                Task { @MainActor in
+                    let granted = error == nil && self.manager.accuracyAuthorization == .fullAccuracy
+                    continuation.resume(returning: granted)
+                }
+            }
+        }
+    }
 
     func startLogging(activity: CLActivityType) {
         recording = true

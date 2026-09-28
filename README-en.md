@@ -115,23 +115,104 @@ Offline maps use one downloaded region at a time:
 - OpenStreetMap regions from `https://download.mapsforge.org/maps/v5/`, with a 2 GB cap and a 64 MB free-space reserve
 - Turistautak.hu from `https://turistautak.elte.hu/tuhu/tuhu_mapsforge.zip` only
 
-MapKit cannot draw those files. The app reads the visible tiles from the Mapsforge file and draws them with MapLibre. Decoding runs off the main thread, is cancelled when the camera moves, and does not load a whole country into memory. MapLibre is created only while an offline map is in use.
+A download reads the real file size first. It does not start when the size cannot be read, the file is over the cap, or free space minus the 64 MB reserve is not enough. On a mobile network the size is confirmed before the download starts. While it runs, the download stops if the bytes written would pass free space minus the reserve, or the cap. Downloaded map files are excluded from device backup.
 
-The map shows OpenStreetMap ODbL attribution, or Turistautak.hu when that map is in use. Hillshade is drawn only when elevation files sit next to the map.
+MapKit cannot draw those files. The app reads the visible tiles from the Mapsforge file and draws them with MapLibre Native (BSD 2-Clause). Decoding runs off the main thread, is cancelled when the camera moves, and does not load a whole country into memory. MapLibre is created only while an offline map is in use. About also shows the MapLibre copyright lines.
+
+An offline OSM map shows `© OpenStreetMap contributors` in the corner. A Turistautak map shows `© Turistautak.hu`, and About links to the site and its terms. Hillshade is drawn only when elevation files sit next to the map.
 
 Place search on an offline map uses an on-device index. Queries start at 3 characters and return at most 5 hits.
 
 ## Privacy
 
-The privacy manifest declares precise location for app functionality and UserDefaults reason `CA92.1`. The app does not track. `ITSAppUsesNonExemptEncryption` is false.
+The privacy manifest declares precise location for app functionality. Required Reason API reasons: UserDefaults `CA92.1`, file timestamp `C617.1`, and disk space `E174.1`. The app does not track. `ITSAppUsesNonExemptEncryption` is false.
+
+The logged route, acceleration, and lean angle stay in SQLite on the phone. An iPhone backup includes that database. Downloaded map files are excluded from backup. The map, search, a route, and an address send Apple the coordinate or map area needed for that request. An OSM or Turistautak download lets that server see the IP address and the requested file. The logged track is not uploaded to the developer’s server. The first screen and the Help usage section say the same thing.
+
+Privacy policy: `https://lkovari.github.io/KLHome/assets/bigfiles/gtl-ios-private-policy.html`. Use that same address as the App Store Connect Support URL. The source is `docs/gtl-ios-private-policy.html`; copy it to the KLHome site before submission. About also shows `laszlo.kovary@gmail.com`. The link is on the first screen, in Settings, and in Help.
+
+Refuse on the first screen does not quit the app. Recording stays off until Accept. While location is When In Use, Start explains why Always is needed for a locked screen; choosing only while using the app starts without an Always request. Recording does not start on reduced accuracy until Precise Location is allowed. If location is denied, the GPS tab opens Location settings.
 
 Purpose strings, in English and Hungarian:
 
 - Location when in use
 - Location always and when in use
 - Motion
+- Temporary precise location for the route (`PreciseRoute`)
 
 The only background mode is Location. What happens when the screen locks is in [Logging on a locked screen](#logging-on-a-locked-screen).
+
+## What changed from the previous behavior
+
+These changes are here because of App Store review. Recording, the map, saved tracks, and export are still there. A few actions that used to run immediately now pass a check or a choice first. When the condition is met, the action continues as before.
+
+### Refuse
+
+Refuse on the first screen used to call `exit(0)` and end the process. iOS has no Quit on the interface: the system ends the process. Review sends that back under a finished, usable app and under design.
+
+The button now stays on the disclaimer. A line says recording stays off until the user accepts. Accept still writes the `disclaimer` UserDefaults key, then opens the tracker.
+
+### Opening text and Help
+
+The first screen and the Help usage paragraph used to say that location is not sent to a server, or that nothing is uploaded. The Map section of Help already said that a route or address request sends a coordinate to Apple. The three texts contradicted each other. The guideline says the user must not be misled about whether data leaves the device.
+
+Both places now say the two facts separately. The logged track is not uploaded to the developer’s server. The map, search, a route, and an address send Apple the coordinate needed for that request. The Map help sentences are unchanged. They were the model.
+
+### Privacy policy link
+
+The link used to live only in a Help row that starts collapsed, and the label was the host name. A reviewer looks at the first screen and at Settings. The guideline asks for the policy somewhere easy to reach inside the app.
+
+The same URL is now on the first screen, in Settings, and in Help. The label in all three places is “Privacy policy” or “Adatvédelmi nyilatkozat”. The address is `https://lkovari.github.io/KLHome/assets/bigfiles/gtl-ios-private-policy.html`. The page source is `docs/gtl-ios-private-policy.html`. Copy that file to the KLHome site before submission, or the reviewer still reads the old Android text. The App Store Connect Support URL field should be this same page.
+
+The page describes the iOS data flow: the route, acceleration, and lean angle stay in SQLite on the phone; backup includes the track database and excludes downloaded map files; MapKit, search, a route, and an address send Apple a coordinate or the map area; an OSM or Turistautak download lets that server see the IP address and the requested file; background location runs only while logging and only with Always; there is no account, no ads, and no tracking.
+
+### Privacy manifest
+
+The manifest used to declare only the UserDefaults reason (`CA92.1`). The place index reads a map file’s modification time, and the download reads free disk space before it starts. Those are required-reason APIs. A missing declaration stops the upload with ITMS-91053, and the build never reaches review.
+
+Precise location remains, for app functionality, not linked, not used for tracking. File timestamp `C617.1` and disk space `E174.1` were added. That does not change the steps a user takes. The resolved MapLibre 6.31.0 framework ships its own `PrivacyInfo.xcprivacy`, so no extra manifest was written into it.
+
+### Always permission
+
+If location was only While Using the App, Start used to open the system Always dialog immediately and start the session in the same step. The user did not see an in-app sentence, before that dialog, saying that locked-screen recording is why Always is needed.
+
+Start now shows an in-app sheet. The sheet says locked-screen recording needs Location set to Always, the blue indicator stays until Stop, and Stop ends background updates. Allow Always then calls the system Always prompt and starts the session. Only while using the app starts on-screen recording without an Always request. If the user grants Always later, the same session turns on background updates and the blue indicator. When Always is already granted, Start still records immediately, without the sheet, because the system prompt is not due.
+
+### Reduced accuracy
+
+The user could choose approximate location in the system dialog. Recording still started, and the track was made of unusable points.
+
+If accuracy is reduced, logging now asks the system for temporary full accuracy first. The purpose key is `PreciseRoute`: precise location is required to record a usable route, in English and Hungarian. If the user does not grant it, the session does not start. The GPS tab says Precise Location is required in Settings, and a button opens the existing Location settings screen.
+
+### Denied location
+
+In the denied or restricted state, Start used to write into a status field no view showed, and the GPS tab said “Waiting for GPS”. The button looked dead.
+
+The GPS tab now says location is off, and a button opens the existing Location settings screen. That screen opens the system Settings. Those branches no longer write a second, hidden English status.
+
+### Offline map download
+
+The free-space check used to run with a length of 0 bytes. If more than 64 MB was free, the download started without the real file size. The background download could use the mobile network with no confirmation and no size on screen. While it ran, cancellation was at the 2 GB OSM cap or the 500 MB Turistautak cap, not at the space still free. Two of the app’s own errors were English only.
+
+A download now sends a HEAD request and reads `Content-Length` first. The Hungary OSM file and the Turistautak zip return that header. If the length cannot be read, the file is over the cap, or free space minus the 64 MB reserve is not enough, the download does not start, with an error in English and Hungarian. On a mobile network a confirmation is required, with the region name and the expected size. After confirmation, mobile data stays allowed. On Wi-Fi the confirmation is skipped, and the download starts when the size and the free space are enough. While it runs, the download stops if the bytes written pass the budget taken at the start, or if free space falls under the reserve. A `URLSession` error is still in the system language.
+
+### Backup
+
+The track database and the map files both lived in Application Support, so an iPhone backup, including iCloud, could copy both. The policy and the binary have to describe the same fate for precise location.
+
+The track database is still included in backup. The policy says so. The Exports folder stays in the Files app, because the user saved that copy on purpose. The `maps` directory and a downloaded map file get `isExcludedFromBackup`, because a country file is hundreds of megabytes and does not belong in a backup.
+
+### Map credit and About
+
+The offline OSM corner used to say `© OpenStreetMap`. ODbL asks for `© OpenStreetMap contributors` on the produced work, on the screen where the map data is visible. That is the corner text while a downloaded OSM file is in use. The ODbL sentence in About is unchanged.
+
+The Turistautak corner is still `© Turistautak.hu`. About adds that their terms require a clear reference to the site wherever the data is shown, and that the file is saved on this phone for the user’s own use. There is a link to `https://turistautak.hu` and to the legal notice. The download stays in the build, because the terms allow saving for personal use when the reference is visible.
+
+About gained a MapLibre row: MapLibre Native, BSD 2-Clause, and the copyright lines from the 6.31.0 package (MapLibre contributors, MapTiler.com, Mapbox). Binary distribution requires that text. Support is new: the privacy policy link and `laszlo.kovary@gmail.com`. The Bitbucket repository row remains. It is not the support contact. The App Store Connect Support URL is the privacy policy page, not the repository root.
+
+### What stayed the same
+
+After Accept, the tracker still opens. With Always, locked-screen recording and the blue indicator until Stop are unchanged. While Using the App, locking the screen still stops new points. Online MapKit, place search, a route from a tap, an address, saved tracks, and GPX and KMZ export are in the same places. The track database stays on the phone, and backup includes it.
 
 ## A real iPhone
 

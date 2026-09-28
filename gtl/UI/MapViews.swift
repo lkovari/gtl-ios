@@ -33,7 +33,7 @@ struct MapTab: View {
                         if model.trackPoints.count >= 2 {
                             speedLegend
                         }
-                        Text(model.effectiveOffline && model.settings.selectedMapId == OsmCatalog.tuhuId ? "© Turistautak.hu" : model.effectiveOffline ? "© OpenStreetMap" : "")
+                        Text(model.effectiveOffline && model.settings.selectedMapId == OsmCatalog.tuhuId ? "© Turistautak.hu" : model.effectiveOffline ? "© OpenStreetMap contributors" : "")
                             .font(.caption2)
                             .padding(4)
                             .background(.ultraThinMaterial)

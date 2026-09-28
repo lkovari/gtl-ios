@@ -58,6 +58,14 @@ enum OsmCatalog {
     }
 }
 
+struct PendingMapDownload: Identifiable {
+    var id: String
+    var title: String
+    var bytes: Int64
+    var url: URL
+    var cap: Int64
+}
+
 enum DownloadBudget {
     static let maxOsmBytes: Int64 = 2 * 1024 * 1024 * 1024
     static let reserveBytes: Int64 = 64 * 1024 * 1024
@@ -86,10 +94,18 @@ enum MapPaths {
         let dir = base.appendingPathComponent("maps", isDirectory: true)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         try? FileManager.default.setAttributes([.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication], ofItemAtPath: dir.path)
+        excludeFromBackup(dir)
         return dir
     }
 
     static func mapFile(id: String) throws -> URL {
         try mapsDirectory().appendingPathComponent("\(id).map")
+    }
+
+    static func excludeFromBackup(_ url: URL) {
+        var target = url
+        var values = URLResourceValues()
+        values.isExcludedFromBackup = true
+        try? target.setResourceValues(values)
     }
 }
