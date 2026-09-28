@@ -45,8 +45,14 @@ final class TrackerModel {
     var headingDegrees: Float?
     var headingAccuracy: Int?
     var declination: Float?
+    var travelDegrees: Double?
+    var mapHeading: Double = 0
+    var mapPitch: Double = FollowCamera.defaultPitch
+    var headingUp = true
+    var tiltResetToken = 0
     var sessions: [TrackSession] = []
-    var trackPoints: [GeoPoint] = []
+    var trackPoints: [TrackVertex] = []
+    var speedRuns: [SpeedRun] = []
     var elevation: [ElevationSample] = []
     var selectedSessionId: Int64?
     var mapCleared = false
@@ -79,7 +85,14 @@ final class TrackerModel {
     var mapTapY: CGFloat = 0
     var mapTapMenu = false
     var mapTapCoordinate = false
+    var mapTapAddress = false
+    var mapTapAddressText: String?
+    var addressBusy = false
+    var addressNotice: String?
     var distanceTarget: GeoPoint?
+    var routeCoordinates: [GeoPoint] = []
+    var routeMeters: Double?
+    var routeNotice: String?
     var layerEpoch = 0
     var zoomTicket = 0
     var zoomStep = 0
@@ -90,6 +103,13 @@ final class TrackerModel {
     var poorGps = false
     var showErrorLog = false
     private var versionTaps: [Date] = []
+    private var lastTravelDegrees: Float?
+    private var compassMagnetic: Float?
+    private var compassShift: Float?
+    private var routeTask: Task<Void, Never>?
+    private var activeDirections: MKDirections?
+    private var geocoder: CLGeocoder?
+    private var addressGeneration = 0
 
     private let store: SettingsStore
     private let database: TrackDatabase?
@@ -156,11 +176,39 @@ final class TrackerModel {
     }
 
     var displayPoints: [GeoPoint] {
+        displayVertices.map(\.point)
+    }
+
+    var liveTail: SpeedRun? {
+        guard logging, let last = trackPoints.last, let latitude, let longitude else { return nil }
+        guard FixAcceptance.haversineMeters(last.latitude, last.longitude, latitude, longitude) > 3 else { return nil }
+        return SpeedRun(
+            bin: SpeedColorScale.bin(speedMps: speedMps, usage: settings.usageType),
+            points: [last.point, GeoPoint(latitude: latitude, longitude: longitude, altitude: nil)]
+        )
+    }
+
+    private var displayVertices: [TrackVertex] {
         guard trackVisible else { return [] }
-        let drawn = settings.optimizationActive
-            ? DouglasPeucker.simplify(trackPoints, toleranceMeters: DouglasPeucker.clampTolerance(settings.optimizationTolerance))
-            : trackPoints
-        return TrackLine.withLiveEnd(drawn, logging: logging, latitude: latitude, longitude: longitude)
+        return TrackLine.withLiveEnd(
+            simplifiedTrack(),
+            logging: logging,
+            latitude: latitude,
+            longitude: longitude,
+            speedMps: speedMps
+        )
+    }
+
+    private func simplifiedTrack() -> [TrackVertex] {
+        guard trackVisible else { return [] }
+        if settings.optimizationActive {
+            return DouglasPeucker.simplify(trackPoints, toleranceMeters: DouglasPeucker.clampTolerance(settings.optimizationTolerance))
+        }
+        return trackPoints
+    }
+
+    private func rebuildSpeedRuns() {
+        speedRuns = SpeedColorScale.runs(points: simplifiedTrack(), usage: settings.usageType)
     }
 
     func acceptDisclaimer() {
@@ -186,6 +234,7 @@ final class TrackerModel {
         settings.gnssOnly = smoothing.gnssOnly
         settings.osm.cycleways = OsmRenderOptions.cyclewaysForUsage(usage)
         store.save(settings)
+        rebuildSpeedRuns()
         self.filter.seedFrom(lastAccepted ?? TrackFix(
             timestampMillis: 0, latitude: 0, longitude: 0, altitude: 0, speedMps: 0, bearing: 0, accuracyMeters: 1, satellitesInFix: -1
         ))
@@ -200,6 +249,13 @@ final class TrackerModel {
         store.save(settings)
         UIApplication.shared.isIdleTimerDisabled = logging && settings.keepScreenOnWhileLogging
         applyOfflineFilter()
+        rebuildSpeedRuns()
+    }
+
+    func resetMapTilt() {
+        mapPitch = FollowCamera.defaultPitch
+        headingUp = true
+        tiltResetToken += 1
     }
 
     func startLogging() {
@@ -253,7 +309,10 @@ final class TrackerModel {
         }
     }
 
-    func clearMapTrack() { mapCleared = true }
+    func clearMapTrack() {
+        mapCleared = true
+        rebuildSpeedRuns()
+    }
 
     func showSession(_ id: Int64) {
         selectedSessionId = id
@@ -262,7 +321,7 @@ final class TrackerModel {
         returnToMap = true
         Task {
             await loadSession(id)
-            frameTrack(trackPoints)
+            frameTrack(trackPoints.map(\.point))
         }
     }
 
@@ -274,6 +333,7 @@ final class TrackerModel {
             if let selected = selectedSessionId, ids.contains(selected) {
                 selectedSessionId = nil
                 trackPoints = []
+                rebuildSpeedRuns()
             }
             await reloadSessions()
         }
@@ -342,39 +402,161 @@ final class TrackerModel {
     }
 
     func beginMapTap(latitude: Double, longitude: Double, x: CGFloat, y: CGFloat) {
+        cancelAddressLookup()
         mapTapLatitude = latitude
         mapTapLongitude = longitude
         mapTapX = x
         mapTapY = y
         mapTapMenu = true
         mapTapCoordinate = false
+        routeNotice = nil
     }
 
     func moveMapTapAnchor(x: CGFloat, y: CGFloat) {
-        guard mapTapMenu || mapTapCoordinate else { return }
+        guard mapTapMenu || mapTapCoordinate || mapTapAddress else { return }
         mapTapX = x
         mapTapY = y
     }
 
     func chooseTapDistance() {
         guard let latitude = mapTapLatitude, let longitude = mapTapLongitude else { return }
+        cancelAddressLookup()
         distanceTarget = GeoPoint(latitude: latitude, longitude: longitude)
         mapTapMenu = false
     }
 
     func chooseTapCoordinate() {
         guard mapTapLatitude != nil, mapTapLongitude != nil else { return }
+        cancelAddressLookup()
         mapTapMenu = false
         mapTapCoordinate = true
     }
 
+    func chooseTapAddress() {
+        guard let latitude = mapTapLatitude, let longitude = mapTapLongitude else { return }
+        mapTapMenu = false
+        mapTapCoordinate = false
+        mapTapAddress = true
+        mapTapAddressText = nil
+        addressNotice = nil
+        addressBusy = true
+        addressGeneration += 1
+        let generation = addressGeneration
+        geocoder?.cancelGeocode()
+        let coder = CLGeocoder()
+        geocoder = coder
+        let location = CLLocation(latitude: latitude, longitude: longitude)
+        Task { @MainActor in
+            let placemarks: [CLPlacemark]
+            do {
+                placemarks = try await coder.reverseGeocodeLocation(location)
+            } catch {
+                guard generation == self.addressGeneration else { return }
+                self.addressBusy = false
+                self.mapTapAddressText = nil
+                self.addressNotice = L10n.text("Address unavailable", "A cím nem érhető el")
+                return
+            }
+            guard generation == self.addressGeneration else { return }
+            self.addressBusy = false
+            let mark = placemarks.first
+            if let text = MapAddressLookup.format(
+                houseNumber: mark?.subThoroughfare,
+                street: mark?.thoroughfare,
+                locality: mark?.locality,
+                postalCode: mark?.postalCode,
+                country: mark?.country,
+                hungarian: L10n.hungarian
+            ) {
+                self.mapTapAddressText = text
+                self.addressNotice = nil
+            } else {
+                self.mapTapAddressText = nil
+                self.addressNotice = L10n.text("No address", "Nincs cím")
+            }
+        }
+    }
+
     func closeMapTap() {
+        cancelAddressLookup()
         mapTapMenu = false
         mapTapCoordinate = false
     }
 
+    private func cancelAddressLookup() {
+        addressGeneration += 1
+        geocoder?.cancelGeocode()
+        geocoder = nil
+        mapTapAddress = false
+        mapTapAddressText = nil
+        addressBusy = false
+        addressNotice = nil
+    }
+
     func clearDistance() {
         distanceTarget = nil
+    }
+
+    func chooseTapRoute(_ transport: RouteTransport) {
+        guard let destinationLatitude = mapTapLatitude, let destinationLongitude = mapTapLongitude else { return }
+        guard let originLatitude = latitude, let originLongitude = longitude else {
+            routeNotice = L10n.text("No GPS", "Nincs GPS")
+            return
+        }
+        cancelAddressLookup()
+        mapTapMenu = false
+        activeDirections?.cancel()
+        routeTask?.cancel()
+        routeCoordinates = []
+        routeMeters = nil
+        routeNotice = nil
+        let request = MKDirections.Request()
+        request.source = MKMapItem(placemark: MKPlacemark(coordinate: CLLocationCoordinate2D(latitude: originLatitude, longitude: originLongitude)))
+        request.destination = MKMapItem(placemark: MKPlacemark(coordinate: CLLocationCoordinate2D(latitude: destinationLatitude, longitude: destinationLongitude)))
+        switch transport {
+        case .walking:
+            request.transportType = .walking
+        case .cycling:
+            request.transportType = .cycling
+        case .automobile:
+            request.transportType = .automobile
+        }
+        let directions = MKDirections(request: request)
+        activeDirections = directions
+        routeTask = Task { @MainActor [weak self] in
+            let response: MKDirections.Response
+            do {
+                response = try await directions.calculate()
+            } catch {
+                guard let self, !Task.isCancelled else { return }
+                self.routeNotice = L10n.text("No route", "Nincs útvonal")
+                self.activeDirections = nil
+                return
+            }
+            guard let self, !Task.isCancelled else { return }
+            guard let route = response.routes.first, route.polyline.pointCount >= 2 else {
+                self.routeNotice = L10n.text("No route", "Nincs útvonal")
+                self.activeDirections = nil
+                return
+            }
+            let count = route.polyline.pointCount
+            var coordinates = Array(repeating: kCLLocationCoordinate2DInvalid, count: count)
+            route.polyline.getCoordinates(&coordinates, range: NSRange(location: 0, length: count))
+            self.routeCoordinates = coordinates.map { GeoPoint(latitude: $0.latitude, longitude: $0.longitude, altitude: nil) }
+            self.routeMeters = route.distance
+            self.routeNotice = nil
+            self.activeDirections = nil
+        }
+    }
+
+    func clearRoute() {
+        activeDirections?.cancel()
+        activeDirections = nil
+        routeTask?.cancel()
+        routeTask = nil
+        routeCoordinates = []
+        routeMeters = nil
+        routeNotice = nil
     }
 
     private func showCurrentPosition(_ latitude: Double, _ longitude: Double) {
@@ -579,6 +761,9 @@ final class TrackerModel {
             self.headingDegrees = Float(heading.trueHeading >= 0 ? heading.trueHeading : heading.magneticHeading)
             self.declination = Float(heading.trueHeading - heading.magneticHeading)
             self.headingAccuracy = Int(heading.headingAccuracy.rounded())
+            self.compassMagnetic = Float(heading.magneticHeading)
+            self.compassShift = heading.trueHeading >= 0 ? Float(heading.trueHeading - heading.magneticHeading) : nil
+            self.refreshTravelHeading()
         }
         location.onAuthorization = { [weak self] _ in
             guard let self else { return }
@@ -626,6 +811,9 @@ final class TrackerModel {
             baroCalibrated = false
             samples = []
             trackPoints = []
+            rebuildSpeedRuns()
+            headingUp = true
+            if mapPitch < 20 { mapPitch = FollowCamera.defaultPitch }
             cloud.clear()
             status = "Logging"
             location.startLogging(activity: activityType(settings.usageType))
@@ -657,6 +845,7 @@ final class TrackerModel {
         }
         if location.speed >= 0 { lastSpeed = Float(location.speed); speedMps = lastSpeed }
         if location.course >= 0 { bearing = Float(location.course) }
+        refreshTravelHeading()
         cloud.observe(
             FixCloudSample(
                 timeMillis: nowMillis(),
@@ -724,8 +913,8 @@ final class TrackerModel {
         }
         lastAccepted = fix
         lastAcceptMillis = fix.timestampMillis
-        let point = GeoPoint(latitude: fix.latitude, longitude: fix.longitude, altitude: altitude)
-        trackPoints.append(point)
+        trackPoints.append(TrackVertex(latitude: fix.latitude, longitude: fix.longitude, altitude: altitude, speedMps: fix.speedMps))
+        rebuildSpeedRuns()
         samples.append(TrackSample(
             timestampMillis: fix.timestampMillis, latitude: fix.latitude, longitude: fix.longitude,
             altitude: altitude, speedMps: fix.speedMps, bearing: fix.bearing, ambientTemperature: nil, eventKind: kind
@@ -814,13 +1003,29 @@ final class TrackerModel {
 
     private func loadSession(_ id: Int64) async {
         let events = (try? await database?.events(sessionId: id)) ?? []
-        trackPoints = events.map { GeoPoint(latitude: $0.latitude, longitude: $0.longitude, altitude: $0.altitude) }
+        trackPoints = events.map {
+            TrackVertex(latitude: $0.latitude, longitude: $0.longitude, altitude: $0.altitude, speedMps: $0.speed)
+        }
         elevation = ElevationSeries.downsample(ElevationSeries.fromPoints(events.map {
             ElevationPoint(latitude: $0.latitude, longitude: $0.longitude, gpsAltitude: $0.altitude, baroAltitude: $0.baroAltitude)
         }))
         if let session = sessions.first(where: { $0.id == id }), let usage = UsageType(rawValue: session.usageType) {
             settings.usageType = usage
         }
+        rebuildSpeedRuns()
+    }
+
+    private func refreshTravelHeading() {
+        guard let aim = TravelHeading.resolve(
+            courseDegrees: bearing,
+            speedMps: speedMps,
+            magneticHeading: compassMagnetic,
+            declinationDegrees: compassShift,
+            compassAccuracy: headingAccuracy ?? -1,
+            lastGoodDegrees: lastTravelDegrees
+        ) else { return }
+        travelDegrees = Double(aim.degrees)
+        if !aim.dimmed { lastTravelDegrees = aim.degrees }
     }
 
     private func scheduleIndex() {

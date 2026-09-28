@@ -30,6 +30,9 @@ struct MapTab: View {
                         roundButton("plus", id: "zoomIn") { model.bumpZoom(1) }
                         roundButton("minus", id: "zoomOut") { model.bumpZoom(-1) }
                         roundButton("square.3.layers.3d", id: "mapLayers") { layersOpen = true }
+                        if model.trackPoints.count >= 2 {
+                            speedLegend
+                        }
                         Text(model.effectiveOffline && model.settings.selectedMapId == OsmCatalog.tuhuId ? "© Turistautak.hu" : model.effectiveOffline ? "© OpenStreetMap" : "")
                             .font(.caption2)
                             .padding(4)
@@ -57,6 +60,14 @@ struct MapTab: View {
                     .accessibilityIdentifier("mapTapDistance")
                 Button(L10n.text("GPS coordinate", "GPS koordináta")) { model.chooseTapCoordinate() }
                     .accessibilityIdentifier("mapTapCoordinate")
+                Button(L10n.text("Address", "Cím")) { model.chooseTapAddress() }
+                    .accessibilityIdentifier("mapTapAddress")
+                routeButtons
+                if let notice = model.routeNotice {
+                    Text(notice)
+                        .font(.caption)
+                        .padding(.top, 4)
+                }
             }
             .buttonStyle(.bordered)
             .padding(8)
@@ -85,6 +96,35 @@ struct MapTab: View {
             .background(.ultraThinMaterial)
             .clipShape(RoundedRectangle(cornerRadius: 10))
             .offset(x: model.mapTapX, y: model.mapTapY)
+        } else if model.mapTapAddress {
+            VStack(alignment: .leading, spacing: 4) {
+                if model.addressBusy {
+                    Text(L10n.text("Looking up address…", "Cím keresése…"))
+                        .font(.subheadline)
+                } else if let address = model.mapTapAddressText {
+                    HStack(alignment: .top) {
+                        Text(address)
+                            .font(.subheadline)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Button {
+                            UIPasteboard.general.string = address
+                        } label: {
+                            Image(systemName: "doc.on.doc")
+                        }
+                        .accessibilityIdentifier("mapTapCopy")
+                    }
+                } else if let notice = model.addressNotice {
+                    Text(notice)
+                        .font(.subheadline)
+                }
+                Button(L10n.text("Close", "Bezárás")) { model.closeMapTap() }
+                    .accessibilityIdentifier("mapTapClose")
+            }
+            .padding(8)
+            .frame(maxWidth: 260, alignment: .leading)
+            .background(.ultraThinMaterial)
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .offset(x: model.mapTapX, y: model.mapTapY)
         }
     }
 
@@ -100,7 +140,12 @@ struct MapTab: View {
                 userLatitude: model.latitude,
                 userLongitude: model.longitude,
                 distanceLatitude: model.distanceTarget?.latitude,
-                distanceLongitude: model.distanceTarget?.longitude
+                distanceLongitude: model.distanceTarget?.longitude,
+                trackCount: model.trackPoints.count,
+                routeCount: model.routeCoordinates.count,
+                travelDegrees: model.travelDegrees,
+                tiltResetToken: model.tiltResetToken,
+                logging: model.logging
             )
         } else {
             OnlineMap(model: model)
@@ -144,16 +189,65 @@ struct MapTab: View {
         return TapReadout.formatStraightLine(meters, model.settings.measurementSystem, prefix: L10n.text("D", "T"))
     }
 
+    @ViewBuilder
+    private var routeButtons: some View {
+        if let transport = RouteTransport.forUsage(model.settings.usageType) {
+            Button(L10n.text("Route", "Útvonal")) { model.chooseTapRoute(transport) }
+                .accessibilityIdentifier("mapTapRoute")
+        } else {
+            Button(L10n.text("Walk", "Gyalog")) { model.chooseTapRoute(.walking) }
+                .accessibilityIdentifier("mapTapRouteWalk")
+            Button(L10n.text("Bicycle", "Kerékpár")) { model.chooseTapRoute(.cycling) }
+                .accessibilityIdentifier("mapTapRouteBike")
+            Button(L10n.text("Car", "Autó")) { model.chooseTapRoute(.automobile) }
+                .accessibilityIdentifier("mapTapRouteCar")
+        }
+    }
+
+    private var speedLegend: some View {
+        HStack(spacing: 3) {
+            ForEach(0..<SpeedColor.palette.count, id: \.self) { bin in
+                Circle()
+                    .fill(SpeedColor.at(bin).color)
+                    .frame(width: 8, height: 8)
+            }
+        }
+        .padding(6)
+        .background(.ultraThinMaterial)
+        .clipShape(Capsule())
+        .accessibilityIdentifier("speedLegend")
+    }
+
     private var hud: some View {
         let distance = distanceReadout
-        return Group {
-            switch model.hudMode {
-            case .hidden:
-                if let distance {
-                    distanceChip(distance)
+        return VStack(alignment: .leading, spacing: 8) {
+            Group {
+                switch model.hudMode {
+                case .hidden:
+                    if let distance {
+                        distanceChip(distance)
+                    }
+                case .compact, .full:
+                    hudPanel(compact: model.hudMode == .compact, distance: distance)
                 }
-            case .compact, .full:
-                hudPanel(compact: model.hudMode == .compact, distance: distance)
+            }
+            if let meters = model.routeMeters {
+                Button(TapReadout.formatStraightLine(meters, model.settings.measurementSystem, prefix: L10n.text("R", "U"))) {
+                    model.clearRoute()
+                }
+                .font(.system(size: 16, weight: .medium, design: .monospaced))
+                .foregroundStyle(GtlColor.hudCyan)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(GtlColor.cockpit.opacity(0.78))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .accessibilityIdentifier("mapRouteClear")
+            } else if let notice = model.routeNotice, !model.mapTapMenu {
+                Text(notice)
+                    .font(.caption)
+                    .padding(8)
+                    .background(.ultraThinMaterial)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
             }
         }
     }
@@ -216,13 +310,19 @@ struct MapTab: View {
     }
 
     private var northDial: some View {
-        ZStack {
-            Circle().stroke(GtlColor.hudTeal, lineWidth: 2)
-            Text("N").font(.caption2.bold()).offset(y: -10)
+        Button {
+            model.resetMapTilt()
+        } label: {
+            ZStack {
+                Circle().stroke(GtlColor.hudTeal, lineWidth: 2)
+                Text("N").font(.caption2.bold()).offset(y: -10)
+            }
+            .frame(width: 36, height: 36)
+            .background(.ultraThinMaterial)
+            .clipShape(Circle())
+            .rotationEffect(.degrees(-model.mapHeading))
         }
-        .frame(width: 36, height: 36)
-        .background(.ultraThinMaterial)
-        .clipShape(Circle())
+        .accessibilityIdentifier("northDial")
     }
 
     private func roundButton(_ system: String, id: String, action: @escaping () -> Void) -> some View {
@@ -240,39 +340,19 @@ struct OnlineMap: View {
     @Bindable var model: TrackerModel
     @State private var position: MapCameraPosition = .automatic
     @State private var cameraDistance: Double = 8_000
+    @State private var applyingFollow = false
+    @State private var followLatitude: Double?
+    @State private var followLongitude: Double?
+    @State private var previousAim: Double = 0
 
     var body: some View {
         MapReader { proxy in
         Map(position: $position) {
-            let points = model.displayPoints
-            if points.count >= 2 {
-                MapPolyline(coordinates: points.map { CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude) })
-                    .stroke(GtlColor.carmine, lineWidth: 4)
-            }
-            if let start = TrackEndpoints.start(points) {
-                Annotation("S", coordinate: coordinate(start)) {
-                    Text("S").font(.caption.bold()).padding(5).background(.green).clipShape(Circle()).foregroundStyle(.white)
-                }
-            }
-            if let end = TrackEndpoints.end(points, logging: model.logging) {
-                Annotation("E", coordinate: coordinate(end)) {
-                    Text("E").font(.caption.bold()).padding(5).background(GtlColor.carmine).clipShape(Circle()).foregroundStyle(.white)
-                }
-            }
+            trackLines
+            routeLine
+            endpoints
             if let latitude = model.latitude, let longitude = model.longitude {
-                Annotation("You", coordinate: CLLocationCoordinate2D(latitude: latitude, longitude: longitude)) {
-                    ZStack {
-                        Circle()
-                            .fill(GtlColor.carmine)
-                            .frame(width: 18, height: 18)
-                        Circle()
-                            .stroke(.white, lineWidth: 3)
-                            .frame(width: 18, height: 18)
-                        Image(systemName: "location.fill")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundStyle(.white)
-                    }
-                }
+                userMark(latitude: latitude, longitude: longitude)
                 if model.settings.showAccuracyMarker, let accuracy = model.accuracy {
                     MapCircle(center: CLLocationCoordinate2D(latitude: latitude, longitude: longitude), radius: CLLocationDistance(accuracy))
                         .foregroundStyle(Color(red: 0.4, green: 0.4, blue: 1).opacity(0.2))
@@ -306,13 +386,83 @@ struct OnlineMap: View {
             guard let coordinate = proxy.convert(location, from: .local) else { return }
             model.beginMapTap(latitude: coordinate.latitude, longitude: coordinate.longitude, x: location.x, y: location.y)
         }
-        .onMapCameraChange { _ in
-            guard model.mapTapMenu || model.mapTapCoordinate,
+        .onMapCameraChange { context in
+            if applyingFollow {
+                applyingFollow = false
+            } else {
+                model.mapPitch = FollowCamera.clampPitch(context.camera.pitch)
+            }
+            model.mapHeading = context.camera.heading
+            guard model.mapTapMenu || model.mapTapCoordinate || model.mapTapAddress,
                   let latitude = model.mapTapLatitude,
                   let longitude = model.mapTapLongitude,
                   let point = proxy.convert(CLLocationCoordinate2D(latitude: latitude, longitude: longitude), to: .local) else { return }
             model.moveMapTapAnchor(x: point.x, y: point.y)
         }
+        .onChange(of: model.travelDegrees) { _, _ in follow() }
+        .onChange(of: model.logging) { _, logging in
+            if logging { follow() }
+        }
+        .onChange(of: model.tiltResetToken) { _, _ in applyTiltReset() }
+        }
+    }
+
+    private func coordinates(_ points: [GeoPoint]) -> [CLLocationCoordinate2D] {
+        points.map { CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude) }
+    }
+
+    @MapContentBuilder
+    private var trackLines: some MapContent {
+        ForEach(Array(model.speedRuns.enumerated()), id: \.offset) { _, run in
+            MapPolyline(coordinates: coordinates(run.points))
+                .stroke(SpeedColor.at(run.bin).color, lineWidth: 4)
+        }
+        if let tail = model.liveTail {
+            MapPolyline(coordinates: coordinates(tail.points))
+                .stroke(SpeedColor.at(tail.bin).color, lineWidth: 4)
+        }
+    }
+
+    @MapContentBuilder
+    private var routeLine: some MapContent {
+        if model.routeCoordinates.count >= 2 {
+            MapPolyline(coordinates: coordinates(model.routeCoordinates))
+                .stroke(
+                    Color(red: 0.13, green: 0.45, blue: 0.93),
+                    style: StrokeStyle(lineWidth: 4, lineCap: .round, dash: [8, 6])
+                )
+        }
+    }
+
+    @MapContentBuilder
+    private var endpoints: some MapContent {
+        let points = model.displayPoints
+        if let start = TrackEndpoints.start(points) {
+            Annotation("S", coordinate: coordinate(start)) {
+                Text("S").font(.caption.bold()).padding(5).background(.green).clipShape(Circle()).foregroundStyle(.white)
+            }
+        }
+        if let end = TrackEndpoints.end(points, logging: model.logging) {
+            Annotation("E", coordinate: coordinate(end)) {
+                Text("E").font(.caption.bold()).padding(5).background(GtlColor.carmine).clipShape(Circle()).foregroundStyle(.white)
+            }
+        }
+    }
+
+    private func userMark(latitude: Double, longitude: Double) -> some MapContent {
+        Annotation("You", coordinate: CLLocationCoordinate2D(latitude: latitude, longitude: longitude)) {
+            ZStack {
+                Circle()
+                    .fill(GtlColor.carmine)
+                    .frame(width: 22, height: 22)
+                Circle()
+                    .stroke(.white, lineWidth: 2)
+                    .frame(width: 22, height: 22)
+                Image(systemName: "location.north.fill")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(.white)
+                    .rotationEffect(.degrees(FollowCamera.angleDelta(model.mapHeading, model.travelDegrees ?? model.mapHeading)))
+            }
         }
     }
 
@@ -329,25 +479,54 @@ struct OnlineMap: View {
             cameraDistance = max(200, region.span.latitudeDelta * 111_000)
         }
         cameraDistance = min(20_000_000, max(100, cameraDistance * (step > 0 ? 0.5 : 2)))
-        position = .camera(MapCamera(centerCoordinate: center, distance: cameraDistance))
+        applyingFollow = true
+        position = .camera(MapCamera(
+            centerCoordinate: center,
+            distance: cameraDistance,
+            heading: model.mapHeading,
+            pitch: model.mapPitch
+        ))
     }
 
     private func showTarget() {
         guard let target = model.target else { return }
         let meters = max(250, 600 * pow(2.0, Double(18 - model.focusZoom)))
         cameraDistance = meters
+        applyingFollow = true
         position = .camera(MapCamera(
             centerCoordinate: CLLocationCoordinate2D(latitude: target.latitude, longitude: target.longitude),
-            distance: meters
+            distance: meters,
+            heading: model.mapHeading,
+            pitch: model.mapPitch
         ))
     }
 
     private var mapStyle: MapStyle {
         switch model.settings.mapLayer {
-        case .standard: return .standard
-        case .satellite: return .imagery
-        case .hybrid: return .hybrid
+        case .standard: return .standard(elevation: .realistic)
+        case .satellite: return .imagery(elevation: .realistic)
+        case .hybrid: return .hybrid(elevation: .realistic)
         }
+    }
+
+    private func applyTiltReset() {
+        let center = position.camera?.centerCoordinate
+            ?? position.region?.center
+            ?? CLLocationCoordinate2D(
+                latitude: model.latitude ?? model.target?.latitude ?? 47.497,
+                longitude: model.longitude ?? model.target?.longitude ?? 19.040
+            )
+        let heading = model.headingUp ? (model.travelDegrees ?? 0) : 0
+        previousAim = heading
+        model.mapHeading = heading
+        model.mapPitch = FollowCamera.defaultPitch
+        applyingFollow = true
+        position = .camera(MapCamera(
+            centerCoordinate: center,
+            distance: cameraDistance,
+            heading: heading,
+            pitch: FollowCamera.defaultPitch
+        ))
     }
 
     private func follow() {
@@ -361,11 +540,46 @@ struct OnlineMap: View {
                 span: MKCoordinateSpan(latitudeDelta: max(0.01, bounds.maxLatitude - bounds.minLatitude), longitudeDelta: max(0.01, bounds.maxLongitude - bounds.minLongitude))
             )
             cameraDistance = max(200, region.span.latitudeDelta * 111_000)
+            applyingFollow = true
             position = .region(region)
-        } else {
-            if cameraDistance > 5_000 { cameraDistance = 1200 }
-            position = .camera(MapCamera(centerCoordinate: CLLocationCoordinate2D(latitude: latitude, longitude: longitude), distance: cameraDistance))
+            model.mapHeading = 0
+            model.mapPitch = 0
+            previousAim = 0
+            return
         }
+        let moved: Double
+        if let previousLatitude = followLatitude, let previousLongitude = followLongitude {
+            moved = FixAcceptance.haversineMeters(previousLatitude, previousLongitude, latitude, longitude)
+        } else {
+            moved = FollowCamera.recenterMeters
+        }
+        guard let pose = FollowCamera.pose(
+            logging: true,
+            keepWholeTrack: false,
+            headingUp: model.headingUp,
+            travelDegrees: model.travelDegrees,
+            storedPitch: model.mapPitch,
+            previousHeading: previousAim,
+            movedMeters: moved
+        ) else { return }
+        guard pose.recenter || pose.updateAim else { return }
+        if cameraDistance > 5_000 { cameraDistance = 1200 }
+        let centerLatitude = pose.recenter ? latitude : (followLatitude ?? latitude)
+        let centerLongitude = pose.recenter ? longitude : (followLongitude ?? longitude)
+        if pose.recenter {
+            followLatitude = latitude
+            followLongitude = longitude
+        }
+        previousAim = pose.heading
+        model.mapHeading = pose.heading
+        model.mapPitch = pose.pitch
+        applyingFollow = true
+        position = .camera(MapCamera(
+            centerCoordinate: CLLocationCoordinate2D(latitude: centerLatitude, longitude: centerLongitude),
+            distance: cameraDistance,
+            heading: pose.heading,
+            pitch: pose.pitch
+        ))
     }
 
     private func coordinate(_ point: GeoPoint) -> CLLocationCoordinate2D {
@@ -428,6 +642,16 @@ private struct LabelAnchor {
     var color: UIColor
 }
 
+extension SpeedColor {
+    var color: Color {
+        Color(red: red, green: green, blue: blue)
+    }
+
+    var uiColor: UIColor {
+        UIColor(red: red, green: green, blue: blue, alpha: 1)
+    }
+}
+
 struct OfflineMapRepresentable: UIViewRepresentable {
     var model: TrackerModel
     var features: [MapFeature]
@@ -438,6 +662,11 @@ struct OfflineMapRepresentable: UIViewRepresentable {
     var userLongitude: Double?
     var distanceLatitude: Double?
     var distanceLongitude: Double?
+    var trackCount: Int
+    var routeCount: Int
+    var travelDegrees: Double?
+    var tiltResetToken: Int
+    var logging: Bool
 
     func makeCoordinator() -> Coordinator { Coordinator(model: model) }
 
@@ -469,6 +698,11 @@ struct OfflineMapRepresentable: UIViewRepresentable {
         context.coordinator.userLongitude = userLongitude
         context.coordinator.distanceLatitude = distanceLatitude
         context.coordinator.distanceLongitude = distanceLongitude
+        context.coordinator.trackCount = trackCount
+        context.coordinator.routeCount = routeCount
+        context.coordinator.travelDegrees = travelDegrees
+        context.coordinator.tiltResetToken = tiltResetToken
+        context.coordinator.logging = logging
         context.coordinator.mapView = map
         context.coordinator.place(map)
         context.coordinator.applyZoom(map)
@@ -497,6 +731,15 @@ struct OfflineMapRepresentable: UIViewRepresentable {
         var userLongitude: Double?
         var distanceLatitude: Double?
         var distanceLongitude: Double?
+        var trackCount = 0
+        var routeCount = 0
+        var travelDegrees: Double?
+        var tiltResetToken = 0
+        var logging = false
+        private var storedPitch = FollowCamera.defaultPitch
+        private var previousAim = 0.0
+        private var applyingFollow = false
+        private var appliedTilt = 0
         weak var mapView: MLNMapView?
         private var appliedFocus = 0
         private var appliedZoom = 0
@@ -515,7 +758,7 @@ struct OfflineMapRepresentable: UIViewRepresentable {
         }
 
         private func moveTapAnchor(_ mapView: MLNMapView) {
-            guard model.mapTapMenu || model.mapTapCoordinate,
+            guard model.mapTapMenu || model.mapTapCoordinate || model.mapTapAddress,
                   let latitude = model.mapTapLatitude,
                   let longitude = model.mapTapLongitude else { return }
             let point = mapView.convert(CLLocationCoordinate2D(latitude: latitude, longitude: longitude), toPointTo: mapView)
@@ -541,6 +784,13 @@ struct OfflineMapRepresentable: UIViewRepresentable {
 
         func mapView(_ mapView: MLNMapView, regionDidChangeAnimated animated: Bool) {
             guard cameraSet else { return }
+            if applyingFollow {
+                applyingFollow = false
+            } else {
+                storedPitch = FollowCamera.clampPitch(mapView.camera.pitch)
+                model.mapPitch = storedPitch
+            }
+            model.mapHeading = mapView.camera.heading
             lastLabelTime = CACurrentMediaTime()
             redrawLabels(mapView)
             moveTapAnchor(mapView)
@@ -586,19 +836,35 @@ struct OfflineMapRepresentable: UIViewRepresentable {
             let overlay = MLNShapeSource(identifier: "overlay", shape: MLNShapeCollectionFeature(shapes: []), options: nil)
             style.addSource(overlay)
             overlaySource = overlay
+            style.setImage(Self.userArrow(), forName: "user-arrow")
             let track = MLNLineStyleLayer(identifier: "line-track", source: overlay)
             track.predicate = NSPredicate(format: "paint == 'track'")
-            track.lineColor = NSExpression(forConstantValue: UIColor(red: 0.76, green: 0.23, blue: 0.18, alpha: 1))
+            track.lineColor = NSExpression(
+                format: "TERNARY(speedBin == 0, %@, TERNARY(speedBin == 1, %@, TERNARY(speedBin == 2, %@, TERNARY(speedBin == 3, %@, %@))))",
+                SpeedColor.at(0).uiColor,
+                SpeedColor.at(1).uiColor,
+                SpeedColor.at(2).uiColor,
+                SpeedColor.at(3).uiColor,
+                SpeedColor.at(4).uiColor
+            )
             track.lineWidth = NSExpression(forConstantValue: 4)
             track.lineCap = NSExpression(forConstantValue: "round")
             track.lineJoin = NSExpression(forConstantValue: "round")
             style.addLayer(track)
-            let here = MLNCircleStyleLayer(identifier: "here", source: overlay)
+            let route = MLNLineStyleLayer(identifier: "line-route", source: overlay)
+            route.predicate = NSPredicate(format: "paint == 'route'")
+            route.lineColor = NSExpression(forConstantValue: UIColor(red: 0.13, green: 0.45, blue: 0.93, alpha: 1))
+            route.lineWidth = NSExpression(forConstantValue: 4)
+            route.lineCap = NSExpression(forConstantValue: "round")
+            route.lineDashPattern = NSExpression(forConstantValue: [NSNumber(value: 2), NSNumber(value: 1.5)])
+            style.addLayer(route)
+            let here = MLNSymbolStyleLayer(identifier: "here", source: overlay)
             here.predicate = NSPredicate(format: "paint == 'here'")
-            here.circleRadius = NSExpression(forConstantValue: 8)
-            here.circleColor = NSExpression(forConstantValue: UIColor(red: 0.76, green: 0.23, blue: 0.18, alpha: 1))
-            here.circleStrokeColor = NSExpression(forConstantValue: UIColor.white)
-            here.circleStrokeWidth = NSExpression(forConstantValue: 3)
+            here.iconImageName = NSExpression(forConstantValue: "user-arrow")
+            here.iconRotation = NSExpression(forKeyPath: "bearing")
+            here.iconRotationAlignment = NSExpression(forConstantValue: "map")
+            here.iconPitchAlignment = NSExpression(forConstantValue: "map")
+            here.iconAllowsOverlap = NSExpression(forConstantValue: true)
             style.addLayer(here)
             let target = MLNCircleStyleLayer(identifier: "target", source: overlay)
             target.predicate = NSPredicate(format: "paint == 'target'")
@@ -732,17 +998,29 @@ struct OfflineMapRepresentable: UIViewRepresentable {
                 frameLocalStreets(map)
             }
             var overlay: [MLNShape & MLNFeature] = []
-            let points = model.displayPoints
-            if points.count >= 2 {
-                var coords = points.map { CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude) }
+            for run in model.speedRuns {
+                guard run.points.count >= 2 else { continue }
+                var coords = run.points.map { CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude) }
                 let polyline = MLNPolylineFeature(coordinates: &coords, count: UInt(coords.count))
-                polyline.attributes = ["paint": "track"]
+                polyline.attributes = ["paint": "track", "speedBin": run.bin]
                 overlay.append(polyline)
+            }
+            if let tail = model.liveTail, tail.points.count >= 2 {
+                var coords = tail.points.map { CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude) }
+                let polyline = MLNPolylineFeature(coordinates: &coords, count: UInt(coords.count))
+                polyline.attributes = ["paint": "track", "speedBin": tail.bin]
+                overlay.append(polyline)
+            }
+            if model.routeCoordinates.count >= 2 {
+                var coords = model.routeCoordinates.map { CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude) }
+                let route = MLNPolylineFeature(coordinates: &coords, count: UInt(coords.count))
+                route.attributes = ["paint": "route"]
+                overlay.append(route)
             }
             if let latitude = userLatitude, let longitude = userLongitude {
                 let here = MLNPointFeature()
                 here.coordinate = CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
-                here.attributes = ["paint": "here"]
+                here.attributes = ["paint": "here", "bearing": travelDegrees ?? 0]
                 overlay.append(here)
             }
             if let latitude = distanceLatitude, let longitude = distanceLongitude {
@@ -753,15 +1031,102 @@ struct OfflineMapRepresentable: UIViewRepresentable {
             }
             overlaySource?.shape = MLNShapeCollectionFeature(shapes: overlay)
             if anchorsDirty { redrawLabels(map) }
-            if model.logging, !suppressFollow, let latitude = userLatitude, let longitude = userLongitude {
-                let moved = followLatitude.map { FixAcceptance.haversineMeters($0, followLongitude ?? longitude, latitude, longitude) > 8 } ?? true
-                if moved {
-                    followLatitude = latitude
-                    followLongitude = longitude
-                    map.setCenter(CLLocationCoordinate2D(latitude: latitude, longitude: longitude), zoomLevel: map.zoomLevel, animated: false)
-                }
+            if !suppressFollow {
+                applyFollow(map)
             }
             suppressFollow = false
+        }
+
+        private func applyFollow(_ map: MLNMapView) {
+            if tiltResetToken != appliedTilt {
+                appliedTilt = tiltResetToken
+                storedPitch = FollowCamera.defaultPitch
+                model.mapPitch = FollowCamera.defaultPitch
+                model.headingUp = true
+                previousAim = model.headingUp ? (model.travelDegrees ?? 0) : 0
+                writeCamera(map, heading: previousAim, pitch: FollowCamera.defaultPitch, latitude: userLatitude, longitude: userLongitude, recenter: false)
+                model.mapHeading = previousAim
+                return
+            }
+            guard model.logging, let latitude = userLatitude, let longitude = userLongitude else { return }
+            if followLatitude == nil && storedPitch < 20 {
+                storedPitch = FollowCamera.defaultPitch
+            }
+            if model.settings.keepWholeTrackOnScreen {
+                let flat = map.camera.pitch > 0.5 || abs(FollowCamera.angleDelta(map.camera.heading, 0)) > 1
+                if flat {
+                    writeCamera(map, heading: 0, pitch: 0, latitude: latitude, longitude: longitude, recenter: false)
+                }
+                model.mapHeading = 0
+                model.mapPitch = 0
+                previousAim = 0
+                return
+            }
+            let moved: Double
+            if let previousLatitude = followLatitude, let previousLongitude = followLongitude {
+                moved = FixAcceptance.haversineMeters(previousLatitude, previousLongitude, latitude, longitude)
+            } else {
+                moved = FollowCamera.recenterMeters
+            }
+            guard let pose = FollowCamera.pose(
+                logging: true,
+                keepWholeTrack: false,
+                headingUp: model.headingUp,
+                travelDegrees: model.travelDegrees,
+                storedPitch: storedPitch,
+                previousHeading: previousAim,
+                movedMeters: moved
+            ) else { return }
+            guard pose.recenter || pose.updateAim else { return }
+            let centerLatitude = pose.recenter ? latitude : (followLatitude ?? latitude)
+            let centerLongitude = pose.recenter ? longitude : (followLongitude ?? longitude)
+            if pose.recenter {
+                followLatitude = latitude
+                followLongitude = longitude
+            }
+            previousAim = pose.heading
+            storedPitch = pose.pitch
+            model.mapHeading = pose.heading
+            model.mapPitch = pose.pitch
+            writeCamera(map, heading: pose.heading, pitch: pose.pitch, latitude: centerLatitude, longitude: centerLongitude, recenter: true)
+        }
+
+        private func writeCamera(
+            _ map: MLNMapView,
+            heading: Double,
+            pitch: Double,
+            latitude: Double?,
+            longitude: Double?,
+            recenter: Bool
+        ) {
+            let camera = map.camera
+            camera.heading = heading
+            camera.pitch = CGFloat(pitch)
+            if recenter, let latitude, let longitude {
+                camera.centerCoordinate = CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+            }
+            applyingFollow = true
+            map.setCamera(camera, animated: false)
+        }
+
+        private static func userArrow() -> UIImage {
+            let renderer = UIGraphicsImageRenderer(size: CGSize(width: 28, height: 28))
+            return renderer.image { _ in
+                let circle = UIBezierPath(ovalIn: CGRect(x: 3, y: 3, width: 22, height: 22))
+                UIColor(red: 0.76, green: 0.23, blue: 0.18, alpha: 1).setFill()
+                circle.fill()
+                UIColor.white.setStroke()
+                circle.lineWidth = 2
+                circle.stroke()
+                let arrow = UIBezierPath()
+                arrow.move(to: CGPoint(x: 14, y: 6))
+                arrow.addLine(to: CGPoint(x: 19, y: 18))
+                arrow.addLine(to: CGPoint(x: 14, y: 15))
+                arrow.addLine(to: CGPoint(x: 9, y: 18))
+                arrow.close()
+                UIColor.white.setFill()
+                arrow.fill()
+            }
         }
 
         private func mapShapes() -> [MLNShape & MLNFeature] {

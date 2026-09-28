@@ -104,7 +104,9 @@ Saved tracks can be shared as GPX or KMZ, shown on the map, or deleted.
 
 ## Maps
 
-Online maps use MapKit: standard, satellite, and hybrid. Place search on the online map uses MapKit local search.
+Online maps use MapKit: standard, satellite, and hybrid, each with realistic elevation. While logging, the camera tilts and turns with the direction of travel. The track is colored by speed. A map tap can request a walking, cycling, or driving route from Apple. Place search on the online map uses MapKit local search.
+
+How to use these, in English and Hungarian: [README-en.md](README-en.md) and [README-hu.md](README-hu.md).
 
 Offline maps use one downloaded region at a time:
 
@@ -140,4 +142,4 @@ The simulator can show the screens and a simulated GPS location. These need a ph
 ## Not available on iPhone
 
 - Ambient temperature. The temperature row says that no sensor is available, and temperature is not stored.
-- A separate terrain raster basemap. MapKit provides standard, satellite, and hybrid, including 3D elevation.
+- A separate terrain raster basemap. Realistic elevation is the MapKit terrain, not a hillshade image. Offline maps stay flat.

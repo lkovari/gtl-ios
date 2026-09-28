@@ -591,12 +591,18 @@ enum KmlExporter {
                 lines.append("<Placemark>")
                 lines.append("<name>\(GpxExporter.escape(track.name))</name>")
                 lines.append("<styleUrl>#track</styleUrl>")
+                let lifted = track.points.contains { vertex in
+                    guard let altitude = vertex.point.altitude else { return false }
+                    return altitude.isFinite
+                }
                 lines.append("<LineString>")
-                lines.append("<tessellate>1</tessellate>")
-                lines.append("<altitudeMode>clampToGround</altitudeMode>")
+                if !lifted {
+                    lines.append("<tessellate>1</tessellate>")
+                }
+                lines.append("<altitudeMode>\(lifted ? "absolute" : "clampToGround")</altitudeMode>")
                 lines.append("<coordinates>")
                 for vertex in track.points {
-                    lines.append("\(vertex.point.longitude),\(vertex.point.latitude),0")
+                    lines.append(lineCoordinate(vertex.point, lifted: lifted))
                 }
                 lines.append("</coordinates>")
                 lines.append("</LineString>")
@@ -606,12 +612,12 @@ enum KmlExporter {
                 lines.append("<styleUrl>#trackData</styleUrl>")
                 lines.append("<visibility>0</visibility>")
                 lines.append("<gx:Track>")
-                lines.append("<altitudeMode>clampToGround</altitudeMode>")
+                lines.append("<altitudeMode>\(lifted ? "absolute" : "clampToGround")</altitudeMode>")
                 for vertex in track.points {
                     lines.append("<when>\(GpxExporter.utcWhen(vertex.timestampMillis))</when>")
                 }
                 for vertex in track.points {
-                    lines.append("<gx:coord>\(vertex.point.longitude) \(vertex.point.latitude) 0</gx:coord>")
+                    lines.append("<gx:coord>\(gxCoordinate(vertex.point, lifted: lifted))</gx:coord>")
                 }
                 lines.append("<ExtendedData>")
                 lines.append("<SchemaData schemaUrl=\"#trackPoint\">")
@@ -671,6 +677,27 @@ enum KmlExporter {
         lines.append("</Document>")
         lines.append("</kml>")
         return lines.joined(separator: "\n") + "\n"
+    }
+
+    private static func lineCoordinate(_ point: GeoPoint, lifted: Bool) -> String {
+        "\(kmlNumber(point.longitude)),\(kmlNumber(point.latitude)),\(kmlNumber(liftedAltitude(point, lifted: lifted)))"
+    }
+
+    private static func gxCoordinate(_ point: GeoPoint, lifted: Bool) -> String {
+        "\(kmlNumber(point.longitude)) \(kmlNumber(point.latitude)) \(kmlNumber(liftedAltitude(point, lifted: lifted)))"
+    }
+
+    private static func liftedAltitude(_ point: GeoPoint, lifted: Bool) -> Double {
+        guard lifted, let altitude = point.altitude, altitude.isFinite else { return 0 }
+        return altitude
+    }
+
+    private static func kmlNumber(_ value: Double) -> String {
+        var text = String(format: "%.6f", locale: Locale(identifier: "en_US_POSIX"), value)
+        while text.contains(".") && (text.hasSuffix("0") || text.hasSuffix(".")) {
+            text.removeLast()
+        }
+        return text
     }
 
     private static func styleLines(_ color: String, _ width: Int) -> [String] {

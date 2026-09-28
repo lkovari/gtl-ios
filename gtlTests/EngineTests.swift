@@ -96,13 +96,15 @@ final class EngineTests: XCTestCase {
         XCTAssertFalse(MapTrackVisibility.visible(logging: false, showLastTrackOnMap: true, selectedSessionId: nil, mapCleared: true))
         XCTAssertEqual(MapCameraMode.of(logging: true, keepWholeTrack: false, viewingSaved: false), .followLive)
         let live = TrackLine.withLiveEnd(
-            [GeoPoint(latitude: 47, longitude: 19, altitude: nil)],
+            [TrackVertex(latitude: 47, longitude: 19, altitude: nil, speedMps: 1)],
             logging: true,
             latitude: 47.01,
-            longitude: 19
+            longitude: 19,
+            speedMps: 2
         )
         XCTAssertEqual(live.count, 2)
         XCTAssertEqual(live.last?.latitude ?? 0, 47.01, accuracy: 0.0001)
+        XCTAssertEqual(live.last?.speedMps ?? 0, 2, accuracy: 0.001)
         XCTAssertTrue(GpsQualityNotice.isPoor(20_000))
     }
 
@@ -124,6 +126,21 @@ final class EngineTests: XCTestCase {
         ]))
         XCTAssertTrue(kml.contains("<gx:Track>"))
         XCTAssertTrue(kml.contains("icons/play.png"))
+        XCTAssertTrue(kml.contains("<altitudeMode>absolute</altitudeMode>"))
+        XCTAssertTrue(kml.contains("19,47,100"))
+        XCTAssertTrue(kml.contains("19.01,47.01,110"))
+        XCTAssertTrue(kml.contains("<gx:coord>19 47 100</gx:coord>"))
+        XCTAssertFalse(kml.contains("<tessellate>"))
+        XCTAssertTrue(kml.contains("<altitudeMode>clampToGround</altitudeMode>"))
+        let flat = KmlExporter.export(KmlDocument(name: "GTL", trackColorAabbggrr: "ff0000ff", trackWidth: 6, tracks: [
+            KmlTrackBuilder.build(name: "GTL", events: [
+                TrackLogEvent(timestampMillis: 0, latitude: 47, longitude: 19, altitude: nil, speedMps: 1, kind: .START),
+                TrackLogEvent(timestampMillis: 1000, latitude: 47.01, longitude: 19.01, altitude: nil, speedMps: 1, kind: .MOVE)
+            ], system: .METRIC)
+        ]))
+        XCTAssertTrue(flat.contains("<altitudeMode>clampToGround</altitudeMode>"))
+        XCTAssertFalse(flat.contains("<altitudeMode>absolute</altitudeMode>"))
+        XCTAssertTrue(flat.contains("<tessellate>1</tessellate>"))
         let kmz = KmzExporter.pack(kml: kml, files: ["icons/play.png": Data([1, 2, 3])])
         XCTAssertEqual(kmz.prefix(2), Data([0x50, 0x4b]))
     }
@@ -161,7 +178,180 @@ final class EngineTests: XCTestCase {
         XCTAssertEqual(TapReadout.formatStraightLine(1609.344, .IMPERIAL, prefix: "D"), "D1.0mi")
         XCTAssertEqual(TapReadout.formatStraightLine(1852, .ICAO, prefix: "D"), "D1.0NM")
         XCTAssertEqual(TapReadout.formatStraightLine(20_000, .METRIC, prefix: "D"), "D20km")
-        XCTAssertFalse(MapAddressLookup.supported())
+        XCTAssertEqual(
+            MapAddressLookup.format(
+                houseNumber: "12",
+                street: "Kossuth Lajos utca",
+                locality: "Budapest",
+                postalCode: "1053",
+                country: "Magyarország",
+                hungarian: true
+            ),
+            "Kossuth Lajos utca 12\n1053 Budapest\nMagyarország"
+        )
+        XCTAssertEqual(
+            MapAddressLookup.format(
+                houseNumber: "12",
+                street: "Kossuth Lajos utca",
+                locality: "Budapest",
+                postalCode: "1053",
+                country: "Hungary",
+                hungarian: false
+            ),
+            "12 Kossuth Lajos utca\nBudapest 1053\nHungary"
+        )
+        XCTAssertEqual(
+            MapAddressLookup.format(
+                houseNumber: nil,
+                street: "  Fő út  ",
+                locality: nil,
+                postalCode: " ",
+                country: nil,
+                hungarian: true
+            ),
+            "Fő út"
+        )
+        XCTAssertEqual(
+            MapAddressLookup.format(
+                houseNumber: nil,
+                street: nil,
+                locality: "Budapest",
+                postalCode: nil,
+                country: nil,
+                hungarian: false
+            ),
+            "Budapest"
+        )
+        XCTAssertNil(
+            MapAddressLookup.format(
+                houseNumber: " ",
+                street: nil,
+                locality: "",
+                postalCode: nil,
+                country: "\n",
+                hungarian: false
+            )
+        )
+    }
+
+    func testFollowCameraTravelAndSpeed() {
+        let aimed = FollowCamera.pose(
+            logging: true,
+            keepWholeTrack: false,
+            headingUp: true,
+            travelDegrees: 90,
+            storedPitch: FollowCamera.defaultPitch,
+            previousHeading: 0,
+            movedMeters: 10
+        )
+        XCTAssertEqual(aimed?.heading ?? 0, 90, accuracy: 0.001)
+        XCTAssertEqual(aimed?.pitch ?? 0, 52, accuracy: 0.001)
+        XCTAssertEqual(aimed?.recenter, true)
+        XCTAssertEqual(aimed?.updateAim, true)
+        let held = FollowCamera.pose(
+            logging: true,
+            keepWholeTrack: false,
+            headingUp: true,
+            travelDegrees: 90,
+            storedPitch: 30,
+            previousHeading: 90,
+            movedMeters: 3
+        )
+        XCTAssertEqual(held?.pitch ?? 0, 30, accuracy: 0.001)
+        XCTAssertEqual(held?.recenter, false)
+        XCTAssertEqual(held?.updateAim, false)
+        XCTAssertEqual(FollowCamera.clampPitch(80), 65, accuracy: 0.001)
+        let fitted = FollowCamera.pose(
+            logging: true,
+            keepWholeTrack: true,
+            headingUp: true,
+            travelDegrees: 90,
+            storedPitch: 40,
+            previousHeading: 0,
+            movedMeters: 1
+        )
+        XCTAssertEqual(fitted?.heading ?? -1, 0, accuracy: 0.001)
+        XCTAssertEqual(fitted?.pitch ?? -1, 0, accuracy: 0.001)
+        let turned = FollowCamera.pose(
+            logging: true,
+            keepWholeTrack: false,
+            headingUp: true,
+            travelDegrees: 5,
+            storedPitch: 52,
+            previousHeading: 0,
+            movedMeters: 1
+        )
+        XCTAssertEqual(turned?.recenter, false)
+        XCTAssertEqual(turned?.updateAim, true)
+        XCTAssertEqual(turned?.heading ?? 0, 5, accuracy: 0.001)
+        XCTAssertNil(FollowCamera.pose(
+            logging: false,
+            keepWholeTrack: false,
+            headingUp: true,
+            travelDegrees: 10,
+            storedPitch: 52,
+            previousHeading: 0,
+            movedMeters: 20
+        ))
+        let course = TravelHeading.resolve(
+            courseDegrees: 40,
+            speedMps: 2,
+            magneticHeading: 10,
+            declinationDegrees: 3,
+            compassAccuracy: 5,
+            lastGoodDegrees: 1
+        )
+        XCTAssertEqual(course?.degrees ?? 0, 40, accuracy: 0.001)
+        XCTAssertEqual(course?.dimmed, false)
+        let compass = TravelHeading.resolve(
+            courseDegrees: 40,
+            speedMps: 0.2,
+            magneticHeading: 10,
+            declinationDegrees: 3,
+            compassAccuracy: 5,
+            lastGoodDegrees: 1
+        )
+        XCTAssertEqual(compass?.degrees ?? 0, 13, accuracy: 0.001)
+        let weak = TravelHeading.resolve(
+            courseDegrees: nil,
+            speedMps: 0,
+            magneticHeading: 80,
+            declinationDegrees: 2,
+            compassAccuracy: 40,
+            lastGoodDegrees: 15
+        )
+        XCTAssertEqual(weak?.degrees ?? 0, 15, accuracy: 0.001)
+        XCTAssertEqual(weak?.dimmed, true)
+        let slow = TrackVertex(latitude: 47, longitude: 19, altitude: nil, speedMps: nil)
+        let mid = TrackVertex(latitude: 47.001, longitude: 19, altitude: nil, speedMps: 0.5)
+        let fast = TrackVertex(latitude: 47.002, longitude: 19, altitude: nil, speedMps: 5)
+        let runs = SpeedColorScale.runs(points: [slow, mid, fast], usage: .RUNNER)
+        XCTAssertEqual(runs.count, 2)
+        XCTAssertEqual(runs[0].bin, 0)
+        XCTAssertEqual(runs[1].bin, 4)
+        XCTAssertEqual(runs[0].points.last?.latitude ?? 0, runs[1].points.first?.latitude ?? 1, accuracy: 0.00001)
+        XCTAssertEqual(SpeedColorScale.bin(speedMps: nil, usage: .BICYCLE), 0)
+        XCTAssertEqual(SpeedColorScale.bin(speedMps: 6, usage: .BICYCLE), 2)
+        XCTAssertEqual(SpeedColorScale.bin(speedMps: 14, usage: .FOUR_WHEELERS), 2)
+        XCTAssertEqual(SpeedColorScale.bin(speedMps: 50, usage: .AIRCRAFT), 2)
+        XCTAssertEqual(SpeedColorScale.bin(speedMps: 5, usage: .WATERCRAFT), 2)
+        var alternating: [TrackVertex] = []
+        for index in 0..<302 {
+            alternating.append(TrackVertex(
+                latitude: 47 + Double(index) * 0.0001,
+                longitude: 19,
+                altitude: nil,
+                speedMps: index % 2 == 0 ? 0.2 : 5
+            ))
+        }
+        XCTAssertLessThanOrEqual(SpeedColorScale.runs(points: alternating, usage: .RUNNER).count, SpeedColorScale.maxRuns)
+        XCTAssertEqual(RouteTransport.forUsage(.WALKING_HIKE), .walking)
+        XCTAssertEqual(RouteTransport.forUsage(.RUNNER), .walking)
+        XCTAssertEqual(RouteTransport.forUsage(.BICYCLE), .cycling)
+        XCTAssertEqual(RouteTransport.forUsage(.FOUR_WHEELERS), .automobile)
+        XCTAssertEqual(RouteTransport.forUsage(.TWO_WHEELERS), .automobile)
+        XCTAssertNil(RouteTransport.forUsage(.AIRCRAFT))
+        XCTAssertNil(RouteTransport.forUsage(.WATERCRAFT))
     }
 
     func testKalmanStaysNearMeasurement() {

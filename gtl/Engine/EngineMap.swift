@@ -19,6 +19,16 @@ enum DouglasPeucker {
         return points.enumerated().compactMap { keep[$0.offset] ? $0.element : nil }
     }
 
+    static func simplify(_ points: [TrackVertex], toleranceMeters: Double) -> [TrackVertex] {
+        let geometry = points.map(\.point)
+        guard geometry.count >= 3 else { return points }
+        var keep = [Bool](repeating: false, count: geometry.count)
+        keep[0] = true
+        keep[geometry.count - 1] = true
+        simplifyRange(geometry, 0, geometry.count - 1, toleranceMeters, &keep)
+        return points.enumerated().compactMap { keep[$0.offset] ? $0.element : nil }
+    }
+
     private static func simplifyRange(_ points: [GeoPoint], _ first: Int, _ last: Int, _ toleranceMeters: Double, _ keep: inout [Bool]) {
         var maxDistance = 0.0
         var farthest = first
@@ -148,7 +158,14 @@ enum TargetPointer: Equatable {
         guard coordsFinite(fromLatitude, fromLongitude, toLatitude, toLongitude) else { return nil }
         let accuracy = accuracyMeters.flatMap { $0.isFinite && $0 >= 0 ? Double($0) : nil } ?? 0
         if distanceMeters <= max(accuracy, 20) { return .ring }
-        guard let travel = travelHeading(courseDegrees, speedMps, magneticHeading, declinationDegrees, compassAccuracy) else {
+        guard let travel = TravelHeading.resolve(
+            courseDegrees: courseDegrees,
+            speedMps: speedMps,
+            magneticHeading: magneticHeading,
+            declinationDegrees: declinationDegrees,
+            compassAccuracy: compassAccuracy,
+            lastGoodDegrees: nil
+        ) else {
             return nil
         }
         guard let target = initialBearingDegrees(
@@ -160,25 +177,261 @@ enum TargetPointer: Equatable {
         )
     }
 
-    private static func travelHeading(
-        _ courseDegrees: Float?,
-        _ speedMps: Float?,
-        _ magneticHeading: Float?,
-        _ declinationDegrees: Float?,
-        _ compassAccuracy: Int
-    ) -> (degrees: Float, dimmed: Bool)? {
+    private static func coordsFinite(_ a: Double, _ b: Double, _ c: Double, _ d: Double) -> Bool {
+        a.isFinite && b.isFinite && c.isFinite && d.isFinite
+    }
+}
+
+struct TrackVertex: Equatable {
+    var latitude: Double
+    var longitude: Double
+    var altitude: Double?
+    var speedMps: Float?
+
+    var point: GeoPoint {
+        GeoPoint(latitude: latitude, longitude: longitude, altitude: altitude)
+    }
+}
+
+struct TravelAim: Equatable {
+    var degrees: Float
+    var dimmed: Bool
+}
+
+enum TravelHeading {
+    static func resolve(
+        courseDegrees: Float?,
+        speedMps: Float?,
+        magneticHeading: Float?,
+        declinationDegrees: Float?,
+        compassAccuracy: Int,
+        lastGoodDegrees: Float?
+    ) -> TravelAim? {
         if let course = courseDegrees, course.isFinite, let speed = speedMps, speed.isFinite, speed >= 1 {
-            return (CompassHeading.wrapDegrees(course), false)
+            return TravelAim(degrees: CompassHeading.wrapDegrees(course), dimmed: false)
         }
-        guard let magnetic = magneticHeading, magnetic.isFinite else { return nil }
+        if CompassHeading.needsFigureEight(compassAccuracy), let lastGoodDegrees, lastGoodDegrees.isFinite {
+            return TravelAim(degrees: CompassHeading.wrapDegrees(lastGoodDegrees), dimmed: true)
+        }
+        guard let magnetic = magneticHeading, magnetic.isFinite else {
+            guard let lastGoodDegrees, lastGoodDegrees.isFinite else { return nil }
+            return TravelAim(degrees: CompassHeading.wrapDegrees(lastGoodDegrees), dimmed: true)
+        }
         let shift = declinationDegrees.flatMap { $0.isFinite ? $0 : nil }
         let degrees = shift == nil ? CompassHeading.wrapDegrees(magnetic) : CompassHeading.wrapDegrees(magnetic + (shift ?? 0))
         let dimmed = shift == nil || CompassHeading.needsFigureEight(compassAccuracy)
-        return (degrees, dimmed)
+        return TravelAim(degrees: degrees, dimmed: dimmed)
+    }
+}
+
+struct FollowPose: Equatable {
+    var heading: Double
+    var pitch: Double
+    var recenter: Bool
+    var updateAim: Bool
+}
+
+enum FollowCamera {
+    static let defaultPitch = 52.0
+    static let minPitch = 0.0
+    static let maxPitch = 65.0
+    static let recenterMeters = 8.0
+    static let headingStep = 5.0
+
+    static func clampPitch(_ pitch: Double) -> Double {
+        guard pitch.isFinite else { return defaultPitch }
+        return min(maxPitch, max(minPitch, pitch))
     }
 
-    private static func coordsFinite(_ a: Double, _ b: Double, _ c: Double, _ d: Double) -> Bool {
-        a.isFinite && b.isFinite && c.isFinite && d.isFinite
+    static func angleDelta(_ from: Double, _ to: Double) -> Double {
+        var delta = to - from
+        while delta > 180 { delta -= 360 }
+        while delta < -180 { delta += 360 }
+        return delta
+    }
+
+    static func pose(
+        logging: Bool,
+        keepWholeTrack: Bool,
+        headingUp: Bool,
+        travelDegrees: Double?,
+        storedPitch: Double,
+        previousHeading: Double,
+        movedMeters: Double
+    ) -> FollowPose? {
+        guard logging else { return nil }
+        if keepWholeTrack {
+            return FollowPose(heading: 0, pitch: 0, recenter: true, updateAim: true)
+        }
+        let heading: Double
+        if headingUp {
+            if let travelDegrees, travelDegrees.isFinite {
+                heading = wrapped(travelDegrees)
+            } else {
+                heading = wrapped(previousHeading)
+            }
+        } else {
+            heading = 0
+        }
+        let pitch = clampPitch(storedPitch)
+        let recenter = movedMeters >= recenterMeters
+        let updateAim = abs(angleDelta(previousHeading, heading)) >= headingStep
+        return FollowPose(heading: heading, pitch: pitch, recenter: recenter, updateAim: updateAim)
+    }
+
+    private static func wrapped(_ degrees: Double) -> Double {
+        let wrapped = degrees.truncatingRemainder(dividingBy: 360)
+        return wrapped < 0 ? wrapped + 360 : wrapped
+    }
+}
+
+struct SpeedColor: Equatable {
+    var red: Double
+    var green: Double
+    var blue: Double
+
+    static let palette: [SpeedColor] = [
+        SpeedColor(red: 0x3D / 255, green: 0x5A / 255, blue: 0xFE / 255),
+        SpeedColor(red: 0x1F / 255, green: 0x8A / 255, blue: 0x80 / 255),
+        SpeedColor(red: 0xF2 / 255, green: 0xC1 / 255, blue: 0x4E / 255),
+        SpeedColor(red: 0xE0 / 255, green: 0x7A / 255, blue: 0x3D / 255),
+        SpeedColor(red: 0xC1 / 255, green: 0x3B / 255, blue: 0x2E / 255)
+    ]
+
+    static func at(_ bin: Int) -> SpeedColor {
+        palette[min(palette.count - 1, max(0, bin))]
+    }
+}
+
+struct SpeedRun: Equatable {
+    var bin: Int
+    var points: [GeoPoint]
+}
+
+enum SpeedColorScale {
+    static let maxRuns = 300
+
+    static func thresholds(for usage: UsageType) -> [Float] {
+        switch usage {
+        case .WALKING_HIKE, .RUNNER, .PEDESTRIAN:
+            return [1, 1.6, 2.2, 3]
+        case .BICYCLE:
+            return [3, 6, 8, 11]
+        case .FOUR_WHEELERS, .TWO_WHEELERS:
+            return [8, 14, 22, 33]
+        case .AIRCRAFT:
+            return [25, 50, 75, 100]
+        case .WATERCRAFT:
+            return [2, 5, 8, 12]
+        }
+    }
+
+    static func bin(speedMps: Float?, usage: UsageType) -> Int {
+        guard let speed = speedMps, speed.isFinite, speed >= 0 else { return 0 }
+        var index = 0
+        for cut in thresholds(for: usage) {
+            if speed < cut { return index }
+            index += 1
+        }
+        return index
+    }
+
+    static func runs(points: [TrackVertex], usage: UsageType) -> [SpeedRun] {
+        guard points.count >= 2 else { return [] }
+        var built: [SpeedRun] = []
+        var active = bin(speedMps: points[1].speedMps, usage: usage)
+        var current: [GeoPoint] = [points[0].point, points[1].point]
+        if points.count > 2 {
+            for index in 2..<points.count {
+                let next = bin(speedMps: points[index].speedMps, usage: usage)
+                if next != active {
+                    built.append(SpeedRun(bin: active, points: current))
+                    active = next
+                    current = [points[index - 1].point, points[index].point]
+                } else {
+                    current.append(points[index].point)
+                }
+            }
+        }
+        if current.count >= 2 {
+            built.append(SpeedRun(bin: active, points: current))
+        }
+        return coalesce(built)
+    }
+
+    static func coalesce(_ runs: [SpeedRun]) -> [SpeedRun] {
+        guard runs.count > maxRuns else { return runs }
+        var merged = runs
+        while merged.count > maxRuns {
+            var shortest = 0
+            for index in 1..<merged.count where merged[index].points.count < merged[shortest].points.count {
+                shortest = index
+            }
+            if shortest == 0 {
+                merged = absorb(merged, from: 0, into: 1)
+            } else if shortest == merged.count - 1 {
+                merged = absorb(merged, from: shortest, into: shortest - 1)
+            } else if merged[shortest - 1].points.count <= merged[shortest + 1].points.count {
+                merged = absorb(merged, from: shortest, into: shortest - 1)
+            } else {
+                merged = absorb(merged, from: shortest, into: shortest + 1)
+            }
+        }
+        return merged
+    }
+
+    private static func absorb(_ runs: [SpeedRun], from: Int, into: Int) -> [SpeedRun] {
+        var copy = runs
+        let donor = copy[from]
+        let hostIndex = into
+        if hostIndex < from {
+            var host = copy[hostIndex]
+            let extra = donor.points.dropFirst()
+            host.points.append(contentsOf: extra)
+            copy[hostIndex] = host
+            copy.remove(at: from)
+        } else {
+            var host = copy[hostIndex]
+            let prefix = donor.points.dropLast()
+            host.points.insert(contentsOf: prefix, at: 0)
+            copy[hostIndex] = host
+            copy.remove(at: from)
+        }
+        return joinSameBin(copy)
+    }
+
+    private static func joinSameBin(_ runs: [SpeedRun]) -> [SpeedRun] {
+        guard var first = runs.first else { return [] }
+        var joined: [SpeedRun] = []
+        for run in runs.dropFirst() {
+            if run.bin == first.bin {
+                first.points.append(contentsOf: run.points.dropFirst())
+            } else {
+                joined.append(first)
+                first = run
+            }
+        }
+        joined.append(first)
+        return joined
+    }
+}
+
+enum RouteTransport: String, Equatable {
+    case walking
+    case cycling
+    case automobile
+
+    static func forUsage(_ usage: UsageType) -> RouteTransport? {
+        switch usage {
+        case .WALKING_HIKE, .RUNNER, .PEDESTRIAN:
+            return .walking
+        case .BICYCLE:
+            return .cycling
+        case .FOUR_WHEELERS, .TWO_WHEELERS:
+            return .automobile
+        case .AIRCRAFT, .WATERCRAFT:
+            return nil
+        }
     }
 }
 
@@ -493,9 +746,15 @@ enum TrackEndpoints {
 }
 
 enum TrackLine {
-    static func withLiveEnd(_ points: [GeoPoint], logging: Bool, latitude: Double?, longitude: Double?) -> [GeoPoint] {
+    static func withLiveEnd(
+        _ points: [TrackVertex],
+        logging: Bool,
+        latitude: Double?,
+        longitude: Double?,
+        speedMps: Float?
+    ) -> [TrackVertex] {
         guard logging, let latitude, let longitude else { return points }
-        let here = GeoPoint(latitude: latitude, longitude: longitude, altitude: nil)
+        let here = TrackVertex(latitude: latitude, longitude: longitude, altitude: nil, speedMps: speedMps)
         guard let last = points.last else { return [here] }
         guard FixAcceptance.haversineMeters(last.latitude, last.longitude, latitude, longitude) > 3 else { return points }
         var copy = points
@@ -577,8 +836,37 @@ enum OsmMapCamera {
 }
 
 enum MapAddressLookup {
-    static func supported() -> Bool { false }
-    static func lookup(latitude: Double, longitude: Double) -> String? { nil }
+    static func format(
+        houseNumber: String?,
+        street: String?,
+        locality: String?,
+        postalCode: String?,
+        country: String?,
+        hungarian: Bool
+    ) -> String? {
+        let number = cleaned(houseNumber)
+        let road = cleaned(street)
+        let city = cleaned(locality)
+        let code = cleaned(postalCode)
+        let nation = cleaned(country)
+        let streetLine = hungarian ? joined(road, number) : joined(number, road)
+        let cityLine = hungarian ? joined(code, city) : joined(city, code)
+        let lines = [streetLine, cityLine, nation].compactMap { $0 }
+        guard !lines.isEmpty else { return nil }
+        return lines.joined(separator: "\n")
+    }
+
+    private static func cleaned(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private static func joined(_ first: String?, _ second: String?) -> String? {
+        let parts = [first, second].compactMap { $0 }
+        guard !parts.isEmpty else { return nil }
+        return parts.joined(separator: " ")
+    }
 }
 
 enum TapReadout {
