@@ -154,34 +154,138 @@ struct AlwaysExplanationSheet: View {
 struct GpsTab: View {
     let model: TrackerModel
     var openLocationSettings: () -> Void = {}
+    @Environment(\.colorScheme) private var scheme
+    @ScaledMetric(relativeTo: .largeTitle) private var degreeSize: CGFloat = 44
+
     var body: some View {
+        let ink = instrumentInk(scheme)
         ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                metric(L10n.text("Latitude", "Szélesség"), model.latitude.map { String(format: "%.6f", $0) } ?? "—")
-                metric(L10n.text("Longitude", "Hosszúság"), model.longitude.map { String(format: "%.6f", $0) } ?? "—")
-                metric(L10n.text("Accuracy", "Pontosság"), model.accuracy.map { String(format: "%.0f m", $0) } ?? "—")
-                metric(L10n.text("GPS / Baro", "GPS / Baro"), altitudeLine)
-                metric(L10n.text("Status", "Állapot"), statusLine)
-                if model.locationAuthorization == .denied || model.locationAuthorization == .restricted || model.preciseLocationRequired {
-                    Text(locationGate)
-                        .font(.body)
-                    Button(L10n.text("Location settings", "Helyzet beállítások"), action: openLocationSettings)
-                        .buttonStyle(.bordered)
+            VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 22) {
+                HStack(spacing: 8) {
+                    Circle()
+                        .fill(statusTint)
+                        .frame(width: 8, height: 8)
+                    Text(statusLine)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(statusTint)
                 }
-                if model.settings.showFixCloud {
-                    metric("n", "\(model.fixCloud.stats.sampleCount)")
-                    metric("RMS", model.fixCloud.stats.rmsMeters.map { String(format: "%.1f m", $0) } ?? "—")
-                    metric("CEP95", model.fixCloud.stats.cep95Meters.map { String(format: "%.1f m", $0) } ?? "—")
+                .accessibilityIdentifier("gpsStatus")
+                if model.locationAuthorization == .denied || model.locationAuthorization == .restricted || model.preciseLocationRequired {
+                    VStack(alignment: .leading, spacing: 14) {
+                        Text(locationGate)
+                            .font(.body)
+                            .foregroundStyle(ink)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Button(action: openLocationSettings) {
+                            Text(L10n.text("Location settings", "Helyzet beállítások"))
+                                .font(.headline)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                                .foregroundStyle(.white)
+                                .background(GtlColor.carmine)
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                VStack(alignment: .leading, spacing: 18) {
+                    degreeLine(L10n.text("Latitude", "Szélesség"), model.latitude, north: true, ink: ink)
+                    degreeLine(L10n.text("Longitude", "Hosszúság"), model.longitude, north: false, ink: ink)
+                }
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(model.accuracy.map { String(format: "%.0f m", $0) } ?? "—")
+                        .font(.system(size: 28, weight: .medium, design: .rounded))
+                        .monospacedDigit()
+                        .foregroundStyle(accuracyTint)
+                    Text(L10n.text("Accuracy", "Pontosság"))
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
                 }
             }
-            .padding()
+            .padding(.horizontal, 22)
+            .padding(.top, 16)
+            .padding(.bottom, 18)
+            InstrumentRule()
+                .padding(.horizontal, 22)
+            VStack(spacing: 0) {
+                FieldPair(
+                    leftTitle: L10n.text("GPS altitude", "GPS magasság"),
+                    leftValue: altitude(model.altitude),
+                    rightTitle: L10n.text("Baro", "Baro"),
+                    rightValue: altitude(model.baroAltitude),
+                    ink: ink
+                )
+                FieldPair(
+                    leftTitle: L10n.text("Ellipsoid", "Ellipszoid"),
+                    leftValue: altitude(model.ellipsoidalAltitude),
+                    rightTitle: L10n.text("Pressure", "Nyomás"),
+                    rightValue: model.pressureHpa.map { String(format: "%.1f hPa", $0) } ?? "—",
+                    ink: ink
+                )
+                TimelineView(.periodic(from: .now, by: 1)) { context in
+                    FieldPair(
+                        leftTitle: L10n.text("Vertical accuracy", "Függőleges pontosság"),
+                        leftValue: model.verticalAccuracy.map { String(format: "%.0f m", $0) } ?? "—",
+                        rightTitle: L10n.text("Fix age", "Fix kora"),
+                        rightValue: fixAge(at: context.date),
+                        ink: ink
+                    )
+                }
+            }
+            .padding(.horizontal, 22)
+            .padding(.top, 6)
+            if model.settings.showFixCloud {
+                InstrumentRule()
+                    .padding(.horizontal, 22)
+                    .padding(.top, 8)
+                HStack(alignment: .top, spacing: 12) {
+                    FieldReading(title: "n", value: "\(model.fixCloud.stats.sampleCount)", ink: ink)
+                    FieldReading(title: "RMS", value: model.fixCloud.stats.rmsMeters.map { String(format: "%.1f m", $0) } ?? "—", ink: ink)
+                    FieldReading(title: "CEP95", value: model.fixCloud.stats.cep95Meters.map { String(format: "%.1f m", $0) } ?? "—", ink: ink)
+                }
+                .padding(.horizontal, 22)
+                .padding(.vertical, 14)
+            }
+            }
+            .padding(.bottom, 12)
         }
     }
 
-    private var altitudeLine: String {
-        let gps = model.altitude.map { Units.formatAltitude($0, model.settings.measurementSystem) } ?? "—"
-        let baro = model.baroAltitude.map { Units.formatAltitude($0, model.settings.measurementSystem) } ?? "—"
-        return "\(gps) / \(baro)"
+    private func degreeLine(_ title: String, _ value: Double?, north: Bool, ink: Color) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(value.map { String(format: "%.6f°", abs($0)) } ?? "—")
+                    .font(.system(size: degreeSize, weight: .medium, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(ink)
+                    .minimumScaleFactor(0.45)
+                    .lineLimit(1)
+                if let value {
+                    Text(hemisphere(value, north: north))
+                        .font(.title2.weight(.semibold))
+                        .foregroundStyle(north && value >= 0 ? GtlColor.carmine : ink)
+                }
+            }
+        }
+    }
+
+    private func hemisphere(_ value: Double, north: Bool) -> String {
+        if north { return value >= 0 ? "N" : "S" }
+        return value >= 0 ? "E" : "W"
+    }
+
+    private func altitude(_ meters: Double?) -> String {
+        meters.map { Units.formatAltitude($0, model.settings.measurementSystem) } ?? "—"
+    }
+
+    private func fixAge(at now: Date) -> String {
+        guard let lastFixAt = model.lastFixAt else { return "—" }
+        let seconds = max(0, Int(now.timeIntervalSince(lastFixAt)))
+        return "\(seconds) s"
     }
 
     private var locationGate: String {
@@ -210,80 +314,345 @@ struct GpsTab: View {
         return L10n.text("Idle", "Üresjárat")
     }
 
-    private func metric(_ title: String, _ value: String) -> some View {
-        HStack {
-            Text(title).foregroundStyle(.secondary)
-            Spacer()
-            Text(value).font(.system(.body, design: .monospaced))
+    private var statusTint: Color {
+        if model.locationAuthorization == .denied || model.locationAuthorization == .restricted || model.preciseLocationRequired {
+            return GtlColor.carmine
         }
+        if model.logging && model.poorGps { return GtlColor.amber }
+        if model.logging { return liveAccent(scheme) }
+        return Color.secondary
+    }
+
+    private var accuracyTint: Color {
+        guard let meters = model.accuracy else { return Color.secondary }
+        if meters <= 15 { return liveAccent(scheme) }
+        if meters <= 40 { return instrumentInk(scheme) }
+        return GtlColor.amber
     }
 }
 
 struct RouteTab: View {
     let model: TrackerModel
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                metric(L10n.text("Elapsed", "Eltelt"), Units.formatDuration(model.stats.elapsedMillis))
-                metric(L10n.text("Odometer", "Számláló"), Units.formatDistance(model.stats.odometerMeters, model.settings.measurementSystem))
-                metric(L10n.text("Time moving", "Mozgásban"), Units.formatDuration(model.stats.movingMillis))
-                metric(L10n.text("Waiting", "Várakozás"), Units.formatDuration(model.stats.waitingMillis))
-                metric(L10n.text("Speed", "Sebesség"), Units.formatSpeed(RouteTabSpeeds.instantMps(logging: model.logging, liveSpeedMps: model.speedMps) ?? 0, model.settings.measurementSystem))
-                metric(L10n.text("Average", "Átlag"), Units.formatSpeed(RouteTabSpeeds.averageMps(logging: model.logging, sessionAverageMps: model.stats.averageSpeedMps), model.settings.measurementSystem))
-                metric(L10n.text("Altitude", "Magasság"), model.altitude.map { Units.formatAltitude($0, model.settings.measurementSystem) } ?? "—")
-                metric(L10n.text("Bearing", "Irány"), model.bearing.map { String(format: "%.0f°", $0) } ?? "—")
-                metric(L10n.text("Lean", "Dőlés"), model.leanAngle.map { String(format: "%.0f°", $0) } ?? "—")
-                metric(L10n.text("Ambient", "Környezet"), L10n.text("No sensor", "Nincs érzékelő"))
-                ElevationChart(samples: model.elevation)
-                    .frame(height: 140)
-            }
-            .padding()
-        }
-    }
+    @Environment(\.colorScheme) private var scheme
+    @ScaledMetric(relativeTo: .largeTitle) private var speedSize: CGFloat = 92
 
-    private func metric(_ title: String, _ value: String) -> some View {
-        HStack {
-            Text(title).foregroundStyle(.secondary)
-            Spacer()
-            Text(value).font(.system(.body, design: .monospaced))
+    var body: some View {
+        let ink = instrumentInk(scheme)
+        let accent = liveAccent(scheme)
+        let speed = Units.formatSpeed(RouteTabSpeeds.instantMps(logging: model.logging, liveSpeedMps: model.speedMps) ?? 0, model.settings.measurementSystem)
+        let average = Units.formatSpeed(RouteTabSpeeds.averageMps(logging: model.logging, sessionAverageMps: model.stats.averageSpeedMps), model.settings.measurementSystem)
+        let parts = MeasureParts(speed)
+        GeometryReader { geo in
+            let chartHeight = min(160, max(128, geo.size.height * 0.22))
+            ScrollView {
+                VStack(spacing: 0) {
+                    VStack(spacing: 0) {
+                        Text(parts.number)
+                            .font(.system(size: speedSize, weight: model.logging ? .medium : .light, design: .rounded))
+                            .monospacedDigit()
+                            .foregroundStyle(model.logging ? ink : Color.secondary)
+                            .minimumScaleFactor(0.4)
+                            .lineLimit(1)
+                            .contentTransition(.numericText())
+                        Text(parts.unit)
+                            .font(.title3.weight(.semibold))
+                            .foregroundStyle(model.logging ? accent : Color.secondary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(L10n.text("Speed", "Sebesség"))
+                    .accessibilityValue(speed)
+                    .padding(.top, 8)
+                    VStack(spacing: 2) {
+                        Text(average)
+                            .font(.system(.title3, design: .rounded, weight: .medium))
+                            .monospacedDigit()
+                            .foregroundStyle(ink)
+                        Text(L10n.text("Average", "Átlag"))
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.top, 12)
+                    .padding(.bottom, 20)
+                    InstrumentRule()
+                    HStack(alignment: .center, spacing: 0) {
+                        VStack(spacing: 22) {
+                            FieldReading(
+                                title: L10n.text("Elapsed", "Eltelt"),
+                                value: Units.formatDuration(model.stats.elapsedMillis),
+                                ink: ink,
+                                centered: true
+                            )
+                            FieldReading(
+                                title: L10n.text("Time moving", "Mozgásban"),
+                                value: Units.formatDuration(model.stats.movingMillis),
+                                ink: ink,
+                                centered: true
+                            )
+                        }
+                        VStack(spacing: 22) {
+                            FieldReading(
+                                title: L10n.text("Odometer", "Számláló"),
+                                value: Units.formatDistance(model.stats.odometerMeters, model.settings.measurementSystem),
+                                ink: ink,
+                                centered: true
+                            )
+                            FieldReading(
+                                title: L10n.text("Waiting", "Várakozás"),
+                                value: Units.formatDuration(model.stats.waitingMillis),
+                                ink: ink,
+                                centered: true
+                            )
+                        }
+                        .overlay(alignment: .leading) {
+                            Rectangle()
+                                .fill(Color.primary.opacity(0.12))
+                                .frame(width: 1)
+                                .padding(.vertical, 4)
+                        }
+                    }
+                    .padding(.vertical, 18)
+                    InstrumentRule()
+                    HStack(alignment: .top, spacing: 8) {
+                        FieldReading(
+                            title: L10n.text("Altitude", "Magasság"),
+                            value: model.altitude.map { Units.formatAltitude($0, model.settings.measurementSystem) } ?? "—",
+                            ink: ink,
+                            centered: true
+                        )
+                        FieldReading(
+                            title: L10n.text("Bearing", "Irány"),
+                            value: model.bearing.map { String(format: "%.0f°", $0) } ?? "—",
+                            ink: ink,
+                            centered: true
+                        )
+                        FieldReading(
+                            title: L10n.text("Lean", "Dőlés"),
+                            value: model.leanAngle.map { String(format: "%.0f°", $0) } ?? "—",
+                            ink: ink,
+                            centered: true
+                        )
+                    }
+                    .padding(.top, 16)
+                    FieldReading(
+                        title: L10n.text("Ambient", "Környezet"),
+                        value: L10n.text("No sensor", "Nincs érzékelő"),
+                        ink: ink,
+                        centered: true,
+                        quiet: true
+                    )
+                    .padding(.top, 8)
+                    if model.elevation.compactMap(\.gpsAltitude).count >= 2 {
+                        InstrumentRule()
+                            .padding(.top, 18)
+                        ElevationChart(samples: model.elevation, system: model.settings.measurementSystem, accent: accent)
+                            .frame(height: chartHeight)
+                            .padding(.top, 12)
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.bottom, 28)
+                .frame(maxWidth: .infinity, minHeight: geo.size.height, alignment: .top)
+            }
         }
     }
 }
 
 struct ElevationChart: View {
     var samples: [ElevationSample]
+    var system: MeasurementSystem
+    var accent: Color
+    @Environment(\.colorScheme) private var scheme
+
     var body: some View {
-        Canvas { context, size in
-            guard samples.count >= 2 else { return }
-            let scale = ElevationSeries.plotScale(samples)
-            let maxDistance = max(samples.last?.distanceMeters ?? 1, 1)
-            func point(_ sample: ElevationSample, altitude: Double) -> CGPoint {
-                let x = size.width * sample.distanceMeters / maxDistance
-                let y = size.height * (1 - scale.yFraction(altitude))
-                return CGPoint(x: x, y: y)
-            }
-            var gps = Path()
-            var started = false
-            for sample in samples {
-                guard let altitude = sample.gpsAltitude else { continue }
-                let p = point(sample, altitude: altitude)
-                if started { gps.addLine(to: p) } else { gps.move(to: p); started = true }
-            }
-            context.stroke(gps, with: .color(GtlColor.carmine), lineWidth: 2)
+        VStack(alignment: .leading, spacing: 8) {
             if ElevationSeries.hasBaroLine(samples) {
-                var baro = Path()
-                started = false
-                for sample in samples {
-                    guard let altitude = sample.baroAltitude else { continue }
-                    let p = point(sample, altitude: altitude)
-                    if started { baro.addLine(to: p) } else { baro.move(to: p); started = true }
+                HStack(spacing: 16) {
+                    legend(GtlColor.carmine, dashed: false, L10n.text("GPS altitude", "GPS magasság"))
+                    legend(accent, dashed: true, L10n.text("Baro", "Baro"))
                 }
-                context.stroke(baro, with: .color(GtlColor.hudTeal), style: StrokeStyle(lineWidth: 2, dash: [4, 3]))
+            }
+            HStack(alignment: .top, spacing: 8) {
+                if let span = altitudeSpan {
+                    VStack {
+                        Text(span.high)
+                        Spacer(minLength: 0)
+                        Text(span.low)
+                    }
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .frame(width: 48, alignment: .trailing)
+                }
+                Canvas { context, size in
+                    let plot = CGRect(x: 2, y: 8, width: max(1, size.width - 4), height: max(1, size.height - 16))
+                    for fraction in [0.33, 0.66] {
+                        var guide = Path()
+                        let y = plot.maxY - plot.height * fraction
+                        guide.move(to: CGPoint(x: plot.minX, y: y))
+                        guide.addLine(to: CGPoint(x: plot.maxX, y: y))
+                        context.stroke(guide, with: .color(Color.primary.opacity(0.08)), lineWidth: 1)
+                    }
+                    var base = Path()
+                    base.move(to: CGPoint(x: plot.minX, y: plot.maxY))
+                    base.addLine(to: CGPoint(x: plot.maxX, y: plot.maxY))
+                    context.stroke(base, with: .color(Color.primary.opacity(0.18)), lineWidth: 1)
+                    guard samples.count >= 2 else { return }
+                    let scale = ElevationSeries.plotScale(samples)
+                    let maxDistance = max(samples.last?.distanceMeters ?? 1, 1)
+                    func point(_ sample: ElevationSample, altitude: Double) -> CGPoint {
+                        let x = plot.minX + plot.width * sample.distanceMeters / maxDistance
+                        let y = plot.maxY - plot.height * scale.yFraction(altitude)
+                        return CGPoint(x: x, y: y)
+                    }
+                    var gps = Path()
+                    var started = false
+                    var first: CGPoint?
+                    var last: CGPoint?
+                    for sample in samples {
+                        guard let altitude = sample.gpsAltitude else { continue }
+                        let p = point(sample, altitude: altitude)
+                        if started {
+                            gps.addLine(to: p)
+                        } else {
+                            gps.move(to: p)
+                            first = p
+                            started = true
+                        }
+                        last = p
+                    }
+                    if let first, let last {
+                        var fill = Path()
+                        fill.addPath(gps)
+                        fill.addLine(to: CGPoint(x: last.x, y: plot.maxY))
+                        fill.addLine(to: CGPoint(x: first.x, y: plot.maxY))
+                        fill.closeSubpath()
+                        context.fill(
+                            fill,
+                            with: .linearGradient(
+                                Gradient(colors: [GtlColor.carmine.opacity(scheme == .dark ? 0.42 : 0.24), GtlColor.carmine.opacity(0.02)]),
+                                startPoint: CGPoint(x: 0, y: plot.minY),
+                                endPoint: CGPoint(x: 0, y: plot.maxY)
+                            )
+                        )
+                    }
+                    context.stroke(gps, with: .color(GtlColor.carmine), style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
+                    if let last {
+                        let halo = scheme == .dark ? GtlColor.cockpit : GtlColor.paper
+                        context.fill(Path(ellipseIn: CGRect(x: last.x - 5.5, y: last.y - 5.5, width: 11, height: 11)), with: .color(halo))
+                        context.fill(Path(ellipseIn: CGRect(x: last.x - 3.5, y: last.y - 3.5, width: 7, height: 7)), with: .color(GtlColor.carmine))
+                    }
+                    if ElevationSeries.hasBaroLine(samples) {
+                        var baro = Path()
+                        started = false
+                        for sample in samples {
+                            guard let altitude = sample.baroAltitude else { continue }
+                            let p = point(sample, altitude: altitude)
+                            if started { baro.addLine(to: p) } else { baro.move(to: p); started = true }
+                        }
+                        context.stroke(baro, with: .color(accent), style: StrokeStyle(lineWidth: 2, lineCap: .round, dash: [5, 4]))
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .background(GtlColor.paper.opacity(0.35))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
     }
+
+    private var altitudeSpan: (low: String, high: String)? {
+        let gps = samples.compactMap(\.gpsAltitude)
+        guard let low = gps.min(), let high = gps.max(), gps.count >= 2 else { return nil }
+        return (Units.formatAltitude(low, system), Units.formatAltitude(high, system))
+    }
+
+    private func legend(_ color: Color, dashed: Bool, _ title: String) -> some View {
+        HStack(spacing: 6) {
+            Canvas { context, size in
+                var line = Path()
+                line.move(to: CGPoint(x: 0, y: size.height / 2))
+                line.addLine(to: CGPoint(x: size.width, y: size.height / 2))
+                let style = dashed
+                    ? StrokeStyle(lineWidth: 2, lineCap: .round, dash: [4, 3])
+                    : StrokeStyle(lineWidth: 2.5, lineCap: .round)
+                context.stroke(line, with: .color(color), style: style)
+            }
+            .frame(width: 18, height: 8)
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+}
+
+private struct FieldReading: View {
+    var title: String
+    var value: String
+    var ink: Color
+    var centered: Bool = false
+    var quiet: Bool = false
+
+    var body: some View {
+        VStack(alignment: centered ? .center : .leading, spacing: 3) {
+            Text(value)
+                .font(.system(quiet ? .body : .title3, design: .rounded, weight: quiet ? .regular : .medium))
+                .monospacedDigit()
+                .foregroundStyle(quiet || value == "—" ? Color.secondary : ink)
+                .minimumScaleFactor(0.6)
+                .lineLimit(1)
+            Text(title)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(centered ? .center : .leading)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: centered ? .center : .leading)
+    }
+}
+
+private struct FieldPair: View {
+    var leftTitle: String
+    var leftValue: String
+    var rightTitle: String
+    var rightValue: String
+    var ink: Color
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 16) {
+            FieldReading(title: leftTitle, value: leftValue, ink: ink)
+            FieldReading(title: rightTitle, value: rightValue, ink: ink)
+        }
+        .padding(.vertical, 12)
+    }
+}
+
+private struct InstrumentRule: View {
+    var body: some View {
+        Rectangle()
+            .fill(Color.primary.opacity(0.12))
+            .frame(height: 1)
+    }
+}
+
+private struct MeasureParts {
+    var number: String
+    var unit: String
+
+    init(_ formatted: String) {
+        if let space = formatted.lastIndex(of: " ") {
+            number = String(formatted[..<space])
+            unit = String(formatted[formatted.index(after: space)...])
+        } else {
+            number = formatted
+            unit = ""
+        }
+    }
+}
+
+private func instrumentInk(_ scheme: ColorScheme) -> Color {
+    scheme == .dark ? GtlColor.moonCream : GtlColor.nightInk
+}
+
+private func liveAccent(_ scheme: ColorScheme) -> Color {
+    scheme == .dark ? GtlColor.hudCyan : GtlColor.hudTeal
 }
 
 struct CompassTab: View {

@@ -100,6 +100,30 @@ Az első indítás nyilatkozatot mutat. Az elfogadás a készüléken tárolódi
 
 A naplónak GPS, Útvonal, Térkép és Iránytű füle van. A menü a Beállításokat, az offline térképletöltést, a mentett útvonalakat, a Súgót, a Névjegyet és a Helyzet beállításait nyitja. A Névjegy verziósorára hétszer koppintva megnyílik a hibanapló.
 
+A GPS és az Útvonal ugyanazt a műszernyelvet használja, mint az iránytű. A világos és a sötét mód a rendszert követi, ugyanazon a háttéren, mint a többi fül. Az adatok nem változtak. A képernyőn elfoglalt helyük változott.
+
+### GPS
+
+A GPS fül helyzetlemez.
+
+Felül egy pont és egy mondat. A naplózás világos módban türkiz, sötétben cián. Gyenge GPS naplózás közben borostyánsárga. Kikapcsolt helyzet, vagy ha a Pontos hely kell, kármin, ugyanaz a szín, mint az iránytű északja. Az üresjárat és a fixre várakozás a másodlagos szín. A mondat egy ezek közül: Logging, GPS quality is too low, Location is off, Precise location is required, Waiting for GPS, Idle. Magyarul: Naplózás, A GPS minősége túl alacsony, A helyzet ki van kapcsolva, Pontos hely kell, Várakozás a GPS-re, Üresjárat.
+
+Ha a helyzet denied vagy restricted, vagy a Pontos hely még kell, a magyarázat és egy kármin Helyzet beállítások gomb a mondat alatt van. A gomb a meglévő Helyzet beállítások képernyőt nyitja.
+
+A szélesség és a hosszúság a nagy szám, hat tizedes, fokjellel. Az észak kármin. A dél, a kelet és a nyugat az elsődleges szövegszín. Fix nélkül a sor gondolatjel, a félteke betűje rejtve van.
+
+A pontosság a következő szám, méterben. 15 m-ig türkiz, sötét módban cián. Onnantól 40 m-ig az elsődleges szövegszín. 40 m fölött borostyánsárga. Pontosság nélkül gondolatjel.
+
+Egy hajszálvonal választja el a lemezt a kétoszlopos olvasótól. Az érték a neve fölött van. A párok: GPS magasság és baro, ellipszoid és nyomás, függőleges pontosság és a fix kora. A fix kora másodpercenként frissül. A hiányzó érték gondolatjel. Ha a fixfelhő be van kapcsolva, az n, az RMS és a CEP95 egy sorban követi.
+
+### Útvonal
+
+Az Útvonal fül útszámláló. A sebesség a számlap: nagy, kerekített szám, alatta a Beállítások mértékegysége. Naplózás közben a szám az elsődleges szövegszín, a mértékegység türkiz, sötét módban cián. Üresjáratban mindkettő másodlagos, és a sebesség 0. Az alatta lévő átlag ugyanebben az esetben 0.
+
+Egy hajszálvonal alatt az eltelt idő és a számláló a mozgásban töltött idő és a várakozás mellett áll, függőleges vonallal elválasztva. Újabb hajszálvonal, aztán a magasság, az irány és a dőlés egy sorban. A környezet továbbra is „No sensor”, magyarul „Nincs érzékelő”. Ezen a telefonon nincs hőmérséklet-szenzor, és ez a sor halkabb a többinél.
+
+A magassági profil csak akkor jelenik meg, ha két pontnak van GPS-magassága. Kármin vonal, alatta halvány kitöltés, az utolsó ponton egy pötty. A rajz alsó és felső magassága bal oldalon van. Két halvány vízszintes vezető és egy alapvonal ül a vonal mögött. Ha van nyomásminta, szaggatott türkiz vonal, sötét módban cián, a barometrikus magasság, és egy rövid jelmagyarázat nevezi meg a GPS magasságot és a Barót. A két magasság nélkül a profil nem rajzolódik, üres diagram nem tölti ki a képernyőt.
+
 A beállítások: használat (Repülő, Hajó, Autó, Motor, Kerékpár, Futás/Túra), metrikus / angolszász / ICAO mértékegység, megjelenés, rögzítési sűrűség, barométer ha a telefonon van, és a használt térkép rétegkapcsolói.
 
 A mentett útvonalak megoszthatók GPX-ként vagy KMZ-ként, megjeleníthetők a térképen, vagy törölhetők.
@@ -352,7 +376,7 @@ Egy lokalizációhoz 1–10 képernyőkép kell. Itt négy van, állóban, mert 
 #### Mit mutat a négy kép
 
 1. `01-map.png` — Térkép, naplózás, sebesség szerint színezett vonal, HUD, észak-tárcsa.
-2. `02-route.png` — Útvonal összesítő és magassági vonal.
+2. `02-route.png` — A fájl még a régi sorlistát és a keretes magassági vonalat mutatja. A futó Útvonal fül a sebesség számlapja, az út adatai és a magassági profil az [Útvonal](#útvonal) rész szerint. Feltöltés előtt ezt a képet újra kell venni.
 3. `03-compass.png` — MAG / TRUE és a számlap.
 4. `04-saved-tracks.png` — Mentett útvonalak, Térképen, GPX, KMZ, Törlés.
 

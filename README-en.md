@@ -100,6 +100,30 @@ The first launch shows a disclaimer. Accept is stored on the device. Refuse clos
 
 The tracker has GPS, Route, Map, and Compass. The menu opens Settings, offline map downloads, saved tracks, Help, About, and Location settings. Tapping the version line on About seven times opens the error log.
 
+GPS and Route use the same instrument language as the compass. Light and dark follow the system, on the same background as the other tabs. The readings are unchanged. What changed is how they are set on the screen.
+
+### GPS
+
+The GPS tab is a position plate.
+
+A dot and one sentence sit at the top. Logging is teal in light mode and cyan in dark mode. Poor GPS while logging is amber. Location off, or Precise Location required, is carmine, the same color as north on the compass. Idle and waiting for a fix use the secondary color. The sentence is one of: Logging, GPS quality is too low, Location is off, Precise location is required, Waiting for GPS, Idle. Hungarian: Naplózás, A GPS minősége túl alacsony, A helyzet ki van kapcsolva, Pontos hely kell, Várakozás a GPS-re, Üresjárat.
+
+When location is denied or restricted, or Precise Location is still required, the explanation and a carmine Location settings button sit under that sentence. The button opens the existing Location settings screen.
+
+Latitude and longitude are the large numbers, six decimal places, with a degree sign. North is carmine. South, east, and west use the primary text color. With no fix, each line is a dash and the hemisphere letter is hidden.
+
+Accuracy is the next number, in metres. At 15 m or better it uses teal, or cyan in dark mode. From there through 40 m it uses the primary text color. Worse than 40 m it is amber. No accuracy is a dash.
+
+A hairline separates that plate from a two-column reading. The value sits above its name. The pairs are GPS altitude and baro, ellipsoid and pressure, vertical accuracy and fix age. Fix age updates every second. A missing value is a dash. When the fix-cloud switch is on, n, RMS, and CEP95 follow on one row.
+
+### Route
+
+The Route tab is a trip instrument. Speed is the face: a large rounded number, with the unit from Settings under it. While logging, the number uses the primary text color and the unit is teal, or cyan in dark mode. While idle, both are secondary, and the speed is 0. The average under it is 0 in the same case.
+
+Under a hairline, elapsed time and the odometer sit beside time moving and waiting, split by a vertical rule. Another hairline, then altitude, bearing, and lean in one row. Ambient stays “No sensor” (Nincs érzékelő). This phone has no temperature sensor, and that line is quieter than the other readings.
+
+The elevation profile appears only after two points have a GPS altitude. It is a carmine line with a soft fill under it, and a dot on the latest point. The low and high altitudes of the plot sit on the left. Two faint horizontal guides and a baseline sit behind the line. When pressure samples exist, a dashed teal line, cyan in dark mode, is barometric altitude, and a short legend names GPS altitude and Baro. Without those two altitudes the profile is not drawn, so an empty chart does not fill the screen.
+
 Settings cover usage (Aircraft, Watercraft, Car, Motorbike, Bicycle, Run/Hike), metric / imperial / ICAO units, appearance, recording density, the barometer when the phone has one, and the layer switches for the map that is in use.
 
 Saved tracks can be shared as GPX or KMZ, shown on the map, or deleted.
@@ -346,7 +370,7 @@ One localization needs 1 to 10 screenshots. This set has four, portrait, because
 #### What the four images show
 
 1. `01-map.png` — Map while logging, speed-colored line, HUD, north dial.
-2. `02-route.png` — Route totals and the elevation line.
+2. `02-route.png` — The file still shows the old row list and a boxed elevation line. The running Route tab is the speed face, the trip figures, and the elevation profile in [Route](#route). Recapture this frame before upload.
 3. `03-compass.png` — MAG / TRUE and the rose.
 4. `04-saved-tracks.png` — Saved tracks, with Show on map, GPX, KMZ, and Delete.
 

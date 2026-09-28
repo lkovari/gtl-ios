@@ -457,8 +457,8 @@ struct HelpScreen: View {
                 }
                 section("GPS", id: "gps") {
                     Text(L10n.text(
-                        "Latitude, longitude, accuracy, course, speed, GPS altitude, and barometric altitude when a pressure sensor exists. Logging status is on this tab. While logging, if Location is only While Using the App, a line under the title says a locked screen stops new points. There is no ambient temperature sensor, so temperature is not stored.",
-                        "Szélesség, hosszúság, pontosság, irány, sebesség, GPS-magasság, és barometrikus magasság, ha van nyomásszenzor. A naplózás állapota ezen a fülön van. Naplózás közben, ha a Helyzet csak az app használata közben engedélyezett, a cím alatt egy sor azt írja, hogy a zárolt képernyő megállítja az új pontokat. Nincs hőmérséklet-szenzor, ezért a hőmérséklet nem kerül tárolásra."
+                        "Latitude, longitude, horizontal accuracy, vertical accuracy, GPS altitude, ellipsoid altitude, barometric altitude, pressure, and fix age. Barometric altitude and pressure appear while logging when this phone has a pressure sensor. Logging status is on this tab. While logging, if Location is only While Using the App, a line under the title says a locked screen stops new points. There is no ambient temperature sensor, so temperature is not stored.",
+                        "Szélesség, hosszúság, vízszintes pontosság, függőleges pontosság, GPS-magasság, ellipszoidi magasság, barometrikus magasság, nyomás és a fix kora. A barometrikus magasság és a nyomás naplózás közben látszik, ha van nyomásszenzor. A naplózás állapota ezen a fülön van. Naplózás közben, ha a Helyzet csak az app használata közben engedélyezett, a cím alatt egy sor azt írja, hogy a zárolt képernyő megállítja az új pontokat. Nincs hőmérséklet-szenzor, ezért a hőmérséklet nem kerül tárolásra."
                     ))
                 }
                 section(L10n.text("Route", "Útvonal"), id: "route") {

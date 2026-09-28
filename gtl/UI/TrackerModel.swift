@@ -36,7 +36,10 @@ final class TrackerModel {
     var latitude: Double?
     var longitude: Double?
     var accuracy: Float?
+    var verticalAccuracy: Float?
     var altitude: Double?
+    var ellipsoidalAltitude: Double?
+    var lastFixAt: Date?
     var speedMps: Float?
     var bearing: Float?
     var baroAltitude: Double?
@@ -944,13 +947,19 @@ final class TrackerModel {
         latitude = location.latitude
         longitude = location.longitude
         accuracy = Float(location.horizontalAccuracy)
+        lastFixAt = location.timestamp
         if location.verticalAccuracy >= 0 {
+            verticalAccuracy = Float(location.verticalAccuracy)
             altitude = GpsAltitude.pick(
                 gnssMsl: location.altitude,
                 fusedMsl: nil,
                 gnssEllipsoid: location.ellipsoidalAltitude,
                 fusedEllipsoid: nil
             )
+            ellipsoidalAltitude = GpsAltitude.isPlausible(location.ellipsoidalAltitude) ? location.ellipsoidalAltitude : nil
+        } else {
+            verticalAccuracy = nil
+            ellipsoidalAltitude = nil
         }
         if location.speed >= 0 { lastSpeed = Float(location.speed); speedMps = lastSpeed }
         if location.course >= 0 { bearing = Float(location.course) }
