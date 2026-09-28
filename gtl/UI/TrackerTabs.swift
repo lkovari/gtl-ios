@@ -21,17 +21,21 @@ struct TrackerScreen: View {
                 tabBar
             }
             .background { GtlBackground() }
+            .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(for: String.self) { route in
-                switch route {
-                case "settings": SettingsScreen(model: model)
-                case "maps": MapDownloadScreen(model: model)
-                case "tracks": TracksScreen(model: model)
-                case "help": HelpScreen(model: model)
-                case "about": AboutScreen(model: model)
-                case "location": LocationSettingsScreen()
-                case "diagnostics": ErrorLogScreen()
-                default: EmptyView()
+                Group {
+                    switch route {
+                    case "settings": SettingsScreen(model: model)
+                    case "maps": MapDownloadScreen(model: model)
+                    case "tracks": TracksScreen(model: model)
+                    case "help": HelpScreen(model: model)
+                    case "about": AboutScreen(model: model)
+                    case "location": LocationSettingsScreen()
+                    case "diagnostics": ErrorLogScreen()
+                    default: EmptyView()
+                    }
                 }
+                .toolbar(.visible, for: .navigationBar)
             }
         }
         .onChange(of: model.tab) { _, _ in model.onTabChange() }
