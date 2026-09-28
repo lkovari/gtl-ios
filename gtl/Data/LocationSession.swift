@@ -1,10 +1,17 @@
 import CoreLocation
 import Foundation
 
+enum BackgroundLogging {
+    static func isActive(recording: Bool, authorization: CLAuthorizationStatus) -> Bool {
+        recording && authorization == .authorizedAlways
+    }
+}
+
 @MainActor
 final class LocationSession: NSObject, CLLocationManagerDelegate {
     private let manager = CLLocationManager()
     private var recording = false
+    private var backgroundActivity: CLBackgroundActivitySession?
     var onFix: ((RecordedFix) -> Void)?
     var onHeading: ((RecordedHeading) -> Void)?
     var onAuthorization: ((CLAuthorizationStatus) -> Void)?
@@ -20,6 +27,10 @@ final class LocationSession: NSObject, CLLocationManagerDelegate {
 
     var authorization: CLAuthorizationStatus { manager.authorizationStatus }
 
+    var recordsWhileLocked: Bool {
+        BackgroundLogging.isActive(recording: recording, authorization: manager.authorizationStatus)
+    }
+
     func requestWhenInUse() { manager.requestWhenInUseAuthorization() }
 
     func requestAlways() { manager.requestAlwaysAuthorization() }
@@ -28,19 +39,33 @@ final class LocationSession: NSObject, CLLocationManagerDelegate {
         recording = true
         manager.activityType = activity
         manager.pausesLocationUpdatesAutomatically = false
-        if manager.authorizationStatus == .authorizedAlways {
-            manager.allowsBackgroundLocationUpdates = true
-            manager.showsBackgroundLocationIndicator = true
-        }
+        syncBackgroundLogging()
         manager.startUpdatingLocation()
     }
 
     func stopLogging() {
         recording = false
         manager.stopUpdatingLocation()
+        syncBackgroundLogging()
+    }
+
+    private func syncBackgroundLogging() {
+        if BackgroundLogging.isActive(recording: recording, authorization: manager.authorizationStatus) {
+            if backgroundActivity == nil {
+                backgroundActivity = CLBackgroundActivitySession()
+            }
+            manager.allowsBackgroundLocationUpdates = true
+            manager.showsBackgroundLocationIndicator = true
+            manager.pausesLocationUpdatesAutomatically = false
+            return
+        }
+        backgroundActivity?.invalidate()
+        backgroundActivity = nil
         manager.allowsBackgroundLocationUpdates = false
         manager.showsBackgroundLocationIndicator = false
-        manager.pausesLocationUpdatesAutomatically = true
+        if !recording {
+            manager.pausesLocationUpdatesAutomatically = true
+        }
     }
 
     func startWatching() {
@@ -100,7 +125,10 @@ final class LocationSession: NSObject, CLLocationManagerDelegate {
 
     nonisolated func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         let status = manager.authorizationStatus
-        Task { @MainActor in self.onAuthorization?(status) }
+        Task { @MainActor in
+            self.syncBackgroundLogging()
+            self.onAuthorization?(status)
+        }
     }
 
     nonisolated func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {}

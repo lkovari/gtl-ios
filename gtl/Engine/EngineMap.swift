@@ -295,7 +295,8 @@ struct SpeedColor: Equatable {
         SpeedColor(red: 0x1F / 255, green: 0x8A / 255, blue: 0x80 / 255),
         SpeedColor(red: 0xF2 / 255, green: 0xC1 / 255, blue: 0x4E / 255),
         SpeedColor(red: 0xE0 / 255, green: 0x7A / 255, blue: 0x3D / 255),
-        SpeedColor(red: 0xC1 / 255, green: 0x3B / 255, blue: 0x2E / 255)
+        SpeedColor(red: 0xC1 / 255, green: 0x3B / 255, blue: 0x2E / 255),
+        SpeedColor(red: 0x7A / 255, green: 0x15 / 255, blue: 0x30 / 255)
     ]
 
     static func at(_ bin: Int) -> SpeedColor {
@@ -313,14 +314,22 @@ enum SpeedColorScale {
 
     static func thresholds(for usage: UsageType) -> [Float] {
         switch usage {
-        case .WALKING_HIKE, .RUNNER, .PEDESTRIAN:
+        case .RUNNER:
+            return [1, 1.6, 2.2, 3, 4]
+        case .WALKING_HIKE, .PEDESTRIAN:
             return [1, 1.6, 2.2, 3]
         case .BICYCLE:
-            return [3, 6, 8, 11]
+            return [3, 6, 8, 11, Float(50) / Float(3.6)]
         case .FOUR_WHEELERS, .TWO_WHEELERS:
-            return [8, 14, 22, 33]
+            return [8, 14, 22, 33, Float(130) / Float(3.6)]
         case .AIRCRAFT:
-            return [25, 50, 75, 100]
+            return [
+                Float(100) / Float(3.6),
+                Float(200) / Float(3.6),
+                Float(350) / Float(3.6),
+                Float(500) / Float(3.6),
+                Float(600) / Float(3.6)
+            ]
         case .WATERCRAFT:
             return [2, 5, 8, 12]
         }

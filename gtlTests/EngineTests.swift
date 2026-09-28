@@ -1,3 +1,4 @@
+import CoreLocation
 import XCTest
 @testable import gtl
 
@@ -47,6 +48,50 @@ final class EngineTests: XCTestCase {
         XCTAssertFalse(FixAcceptance.shouldAccept(previous: good, current: lowSats, filter: filter))
         let unknownSats = fix(t: 2, lat: 47.01, lon: 19, accuracy: 5, sats: -1)
         XCTAssertTrue(FixAcceptance.shouldAccept(previous: good, current: unknownSats, filter: filter, density: .SMART, usage: .FOUR_WHEELERS))
+    }
+
+    func testLoggingKeepsALateFixThatLiveModeDrops() {
+        let started: Int64 = 1_000_000
+        let late = started + 41_000
+        XCTAssertTrue(FixAcceptance.keepFix(
+            logging: true,
+            ageSeconds: 41,
+            locating: false,
+            fixMillis: late,
+            startedAtMillis: started,
+            lastAcceptMillis: started + 5_000
+        ))
+        XCTAssertFalse(FixAcceptance.keepFix(
+            logging: false,
+            ageSeconds: 41,
+            locating: false,
+            fixMillis: late,
+            startedAtMillis: nil,
+            lastAcceptMillis: nil
+        ))
+        XCTAssertFalse(FixAcceptance.keepFix(
+            logging: true,
+            ageSeconds: 30,
+            locating: false,
+            fixMillis: started - 60_000,
+            startedAtMillis: started,
+            lastAcceptMillis: nil
+        ))
+        XCTAssertFalse(FixAcceptance.keepFix(
+            logging: true,
+            ageSeconds: 5,
+            locating: false,
+            fixMillis: started + 4_000,
+            startedAtMillis: started,
+            lastAcceptMillis: started + 5_000
+        ))
+    }
+
+    func testBackgroundLoggingRequiresRecordingAndAlways() {
+        XCTAssertFalse(BackgroundLogging.isActive(recording: false, authorization: .authorizedAlways))
+        XCTAssertFalse(BackgroundLogging.isActive(recording: true, authorization: .authorizedWhenInUse))
+        XCTAssertFalse(BackgroundLogging.isActive(recording: true, authorization: .denied))
+        XCTAssertTrue(BackgroundLogging.isActive(recording: true, authorization: .authorizedAlways))
     }
 
     func testUsageDefaults() {
@@ -328,12 +373,23 @@ final class EngineTests: XCTestCase {
         let runs = SpeedColorScale.runs(points: [slow, mid, fast], usage: .RUNNER)
         XCTAssertEqual(runs.count, 2)
         XCTAssertEqual(runs[0].bin, 0)
-        XCTAssertEqual(runs[1].bin, 4)
+        XCTAssertEqual(runs[1].bin, 5)
         XCTAssertEqual(runs[0].points.last?.latitude ?? 0, runs[1].points.first?.latitude ?? 1, accuracy: 0.00001)
         XCTAssertEqual(SpeedColorScale.bin(speedMps: nil, usage: .BICYCLE), 0)
         XCTAssertEqual(SpeedColorScale.bin(speedMps: 6, usage: .BICYCLE), 2)
+        XCTAssertEqual(SpeedColorScale.bin(speedMps: Float(49) / Float(3.6), usage: .BICYCLE), 4)
+        XCTAssertEqual(SpeedColorScale.bin(speedMps: Float(50) / Float(3.6), usage: .BICYCLE), 5)
         XCTAssertEqual(SpeedColorScale.bin(speedMps: 14, usage: .FOUR_WHEELERS), 2)
-        XCTAssertEqual(SpeedColorScale.bin(speedMps: 50, usage: .AIRCRAFT), 2)
+        XCTAssertEqual(SpeedColorScale.bin(speedMps: Float(129) / Float(3.6), usage: .FOUR_WHEELERS), 4)
+        XCTAssertEqual(SpeedColorScale.bin(speedMps: Float(130) / Float(3.6), usage: .TWO_WHEELERS), 5)
+        XCTAssertEqual(SpeedColorScale.bin(speedMps: Float(200) / Float(3.6), usage: .FOUR_WHEELERS), 5)
+        XCTAssertEqual(SpeedColorScale.bin(speedMps: 50, usage: .AIRCRAFT), 1)
+        XCTAssertEqual(SpeedColorScale.bin(speedMps: Float(599) / Float(3.6), usage: .AIRCRAFT), 4)
+        XCTAssertEqual(SpeedColorScale.bin(speedMps: Float(600) / Float(3.6), usage: .AIRCRAFT), 5)
+        XCTAssertEqual(SpeedColorScale.bin(speedMps: Float(700) / Float(3.6), usage: .AIRCRAFT), 5)
+        XCTAssertEqual(SpeedColorScale.bin(speedMps: 3.5, usage: .RUNNER), 4)
+        XCTAssertEqual(SpeedColorScale.bin(speedMps: 4, usage: .RUNNER), 5)
+        XCTAssertEqual(SpeedColorScale.bin(speedMps: 5, usage: .WALKING_HIKE), 4)
         XCTAssertEqual(SpeedColorScale.bin(speedMps: 5, usage: .WATERCRAFT), 2)
         var alternating: [TrackVertex] = []
         for index in 0..<302 {

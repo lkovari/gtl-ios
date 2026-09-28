@@ -48,15 +48,15 @@ struct SettingsScreen: View {
                     get: { model.settings.showFixCloud },
                     set: { value in model.updateSettings { $0.showFixCloud = value } }
                 ))
-                Toggle(L10n.text("Keep screen on while logging", "Képernyő bekapcsolva naplózás közben"), isOn: Binding(
-                    get: { model.settings.keepScreenOnWhileLogging },
-                    set: { value in model.updateSettings { $0.keepScreenOnWhileLogging = value } }
-                ))
             }
             if model.effectiveOffline {
                 OfflineLayerControls(model: model)
             }
-            Section(L10n.text("Recording", "Rögzítés")) {
+            Section {
+                Toggle(L10n.text("Keep screen on while logging", "Képernyő bekapcsolva naplózás közben"), isOn: Binding(
+                    get: { model.settings.keepScreenOnWhileLogging },
+                    set: { value in model.updateSettings { $0.keepScreenOnWhileLogging = value } }
+                ))
                 Toggle(L10n.text("Smooth recorded track", "Simított nyomvonal"), isOn: Binding(
                     get: { model.settings.trackSmoothingEnabled },
                     set: { value in model.updateSettings { $0.trackSmoothingEnabled = value } }
@@ -72,6 +72,13 @@ struct SettingsScreen: View {
                         set: { value in model.updateSettings { $0.recordingDensityValue = Float(value) } }
                     ), in: 0...1)
                 }
+            } header: {
+                Text(L10n.text("Recording", "Rögzítés"))
+            } footer: {
+                Text(L10n.text(
+                    "Keep screen on leaves the display awake. A locked screen still records when Location is Always, and the blue indicator stays until Stop. While Using the App, locking the screen stops new points.",
+                    "A képernyő bekapcsolva hagyása ébren tartja a kijelzőt. Zárolt képernyőn a rögzítés akkor megy tovább, ha a Helyzet Mindig, és a kék jelző a Stopig látszik. Az app használata közben a zárolás megállítja az új pontokat."
+                ))
             }
             if model.altimeterAvailable {
                 Section(L10n.text("Barometer", "Barométer")) {
@@ -238,20 +245,20 @@ struct HelpScreen: View {
                 }
                 section(L10n.text("Settings", "Beállítások"), id: "settings") {
                     Text(L10n.text(
-                        "Usage writes a preset for units, smoothing, density, and map simplify. Aircraft and watercraft default to ICAO; the others default to metric. You can change any control afterwards. OSM and Turistautak layer switches are on the map layers button, and the same switches are in Settings while that map is in use. The barometer section appears only if this phone has a pressure sensor. Apple Maps is standard, satellite, or hybrid, each with realistic elevation.",
-                        "A használat előbeállítást ír a mértékegységre, a simításra, a sűrűségre és a térképi egyszerűsítésre. Repülőnél és hajónál az alap az ICAO, a többinél a metrikus. Utána bármelyik kapcsoló módosítható. Az OSM és a Turistautak rétegek a térkép réteg gombján vannak, és ugyanazok a Beállításokban, amíg az a térkép van használatban. A barométer csak akkor látszik, ha van nyomásszenzor. Az Apple térkép standard, műhold vagy hibrid, mindegyik valós domborzattal."
+                        "Usage writes a preset for units, smoothing, density, and map simplify. Aircraft and watercraft default to ICAO; the others default to metric. You can change any control afterwards. Keep screen on while logging is under Recording. It keeps the display awake and does not replace Location set to Always. OSM and Turistautak layer switches are on the map layers button, and the same switches are in Settings while that map is in use. The barometer section appears only if this phone has a pressure sensor. Apple Maps is standard, satellite, or hybrid, each with realistic elevation.",
+                        "A használat előbeállítást ír a mértékegységre, a simításra, a sűrűségre és a térképi egyszerűsítésre. Repülőnél és hajónál az alap az ICAO, a többinél a metrikus. Utána bármelyik kapcsoló módosítható. A képernyő bekapcsolva hagyása a Rögzítés alatt van. Ébren tartja a kijelzőt, és nem helyettesíti a Helyzet: Mindig beállítást. Az OSM és a Turistautak rétegek a térkép réteg gombján vannak, és ugyanazok a Beállításokban, amíg az a térkép van használatban. A barométer csak akkor látszik, ha van nyomásszenzor. Az Apple térkép standard, műhold vagy hibrid, mindegyik valós domborzattal."
                     ))
                 }
                 section(L10n.text("Track logging", "Nyomvonal rögzítés"), id: "logging") {
                     Text(L10n.text(
-                        "Kalman smooths stored points when Smooth recorded track is on. Simplify only thins the line drawn on the map. The stored route and shared KMZ or GPX keep every accepted point. Smart density uses speed bands. Run/Hike and bicycle keep points closer together. Recording quality uses horizontal accuracy. Fixes older than 10 seconds are dropped.",
-                        "A Kalman a letárolt pontokat simítja, ha a Rögzített útvonal simítása be van. Az egyszerűsítés csak a térképen rajzolt vonalat ritkítja. A tárolt útvonal és a megosztott KMZ vagy GPX minden elfogadott pontot megtart. Az okos sűrűség sebességsávokat használ. Futásnál és kerékpárnál sűrűbbek a pontok. A rögzítés a vízszintes pontosságot használja. A 10 másodpercnél régebbi fixek kiesnek."
+                        "Kalman smooths stored points when Smooth recorded track is on. Simplify only thins the line drawn on the map. The stored route and shared KMZ or GPX keep every accepted point. Smart density uses speed bands. Run/Hike and bicycle keep points closer together. Recording quality uses horizontal accuracy. Fixes older than 10 seconds are dropped. Logging continues after the screen locks when Location is Always. That starts as soon as Always is granted, including during the same Start, and the blue indicator stays until Stop. While Using the App records only while this app is on screen. Keep screen on while logging only keeps the display awake.",
+                        "A Kalman a letárolt pontokat simítja, ha a Rögzített útvonal simítása be van. Az egyszerűsítés csak a térképen rajzolt vonalat ritkítja. A tárolt útvonal és a megosztott KMZ vagy GPX minden elfogadott pontot megtart. Az okos sűrűség sebességsávokat használ. Futásnál és kerékpárnál sűrűbbek a pontok. A rögzítés a vízszintes pontosságot használja. A 10 másodpercnél régebbi fixek kiesnek. Zárolt képernyőn a naplózás akkor megy tovább, ha a Helyzet Mindig. Ez az engedély megadásakor azonnal él, még ugyanazon az Indításon, és a kék jelző a Stopig látszik. Az app használata közben csak addig rögzít, amíg ez a képernyő nyitva van. A képernyő bekapcsolva hagyása csak a kijelzőt tartja ébren."
                     ))
                 }
                 section("GPS", id: "gps") {
                     Text(L10n.text(
-                        "Latitude, longitude, accuracy, course, speed, GPS altitude, and barometric altitude when a pressure sensor exists. Logging status is on the Route tab. There is no ambient temperature sensor, so temperature is not stored.",
-                        "Szélesség, hosszúság, pontosság, irány, sebesség, GPS-magasság, és barometrikus magasság, ha van nyomásszenzor. A naplózás állapota az Útvonal fülön van. Nincs hőmérséklet-szenzor, ezért a hőmérséklet nem kerül tárolásra."
+                        "Latitude, longitude, accuracy, course, speed, GPS altitude, and barometric altitude when a pressure sensor exists. Logging status is on this tab. While logging, if Location is only While Using the App, a line under the title says a locked screen stops new points. There is no ambient temperature sensor, so temperature is not stored.",
+                        "Szélesség, hosszúság, pontosság, irány, sebesség, GPS-magasság, és barometrikus magasság, ha van nyomásszenzor. A naplózás állapota ezen a fülön van. Naplózás közben, ha a Helyzet csak az app használata közben engedélyezett, a cím alatt egy sor azt írja, hogy a zárolt képernyő megállítja az új pontokat. Nincs hőmérséklet-szenzor, ezért a hőmérséklet nem kerül tárolásra."
                     ))
                 }
                 section(L10n.text("Route", "Útvonal"), id: "route") {
@@ -262,8 +269,8 @@ struct HelpScreen: View {
                 }
                 section(L10n.text("Map", "Térkép"), id: "map") {
                     Text(L10n.text(
-                        "The map centers on you when a fix exists. Idle, you can pan away. After Start it follows you, tilts the camera to about 52 degrees, and turns the map and the arrow with your direction of travel. Course is used above 1 m/s; below that the compass is used. Two fingers tilt the camera, and the tilt stays. Tap the north dial to restore 52 degrees and direction-up. Keep whole track on screen stays a flat north-up view. Apple Maps standard, satellite, and hybrid use realistic elevation, with no API key. A downloaded OSM or Turistautak map can tilt and follow heading, but the ground stays flat. The track color runs from blue, slow, to carmine, fast, including a saved track. The five dots are that scale. Tap the map, then Route, to ask Apple for a walking, cycling, or driving path. Hike and run use walking, bicycle uses cycling, car and motorbike use driving. Aircraft and watercraft ask you to pick walk, bicycle, or car. The request needs a network and sends the two coordinates to Apple. The logged track stays on this phone. Tap the map, then Address, to ask Apple for the nearest street address of that one point. The lookup needs a network, including on an offline map, and sends that coordinate to Apple. The logged track stays on this phone. Tap the route chip to clear the line. Straight-line Distance is separate. The HUD shows large speed, the unit from Settings, and accuracy in metres. While logging it also shows odometer, elapsed time, and REC. It is hidden when a saved track is on the map and you are not logging. Altitude is not on the HUD.",
-                        "A térkép a fixre centrál, ha van. Idle-ben elhúzható. Indítás után követ, a kamerát kb. 52 fokra dönti, és a térképet meg a nyilat a haladási iránnyal forgatja. 1 m/s felett a course, alatta az iránytű. Két ujjal dönthető, és a dőlés megmarad. Az észak-tárcsa visszaállítja az 52 fokot és a menetirányt. A teljes track a képen felülnézet, észak felé. Az Apple standard, műhold és hibrid valós domborzatot használ, API-kulcs nélkül. A letöltött OSM vagy Turistautak térkép dönthető és menetirányba fordul, a talaj lapos marad. A nyomvonal színe a kéktől, ami lassú, a kárminig, ami gyors, mentett útvonalon is. Az öt pötty ez a skála. Koppintás, majd Útvonal: az Apple gyalog, kerékpárral vagy autóval útvonalat ad. Túra és futás gyalog, kerékpár kerékpár, autó és motor autó. Repülőnél és hajónál gyalog, kerékpár vagy autó közül választasz. A kéréshez hálózat kell, és a két koordináta az Apple-höz megy. A naplózott track a telefonon marad. Koppintás, majd Cím: az Apple ennek az egy pontnak a legközelebbi címét adja. A lekérdezéshez hálózat kell, offline térképen is, és ez az egy koordináta az Apple-höz megy. A naplózott track a telefonon marad. Az útvonal chipje törli a vonalat. A légvonalas Távolság külön van. A HUD a nagy sebességet, a beállított mértékegységet és a pontosságot mutatja méterben. Naplózáskor az út, az eltelt idő és a REC is látszik. Mentett tracknél, ha nem naplózol, a HUD rejtve van. A HUD nem mutat magasságot."
+                        "The map centers on you when a fix exists. Idle, you can pan away. After Start it follows you, tilts the camera to about 52 degrees, and turns the map and the arrow with your direction of travel. Course is used above 1 m/s; below that the compass is used. Two fingers tilt the camera, and the tilt stays. Tap the north dial to restore 52 degrees and direction-up. Keep whole track on screen stays a flat north-up view. Apple Maps standard, satellite, and hybrid use realistic elevation, with no API key. A downloaded OSM or Turistautak map can tilt and follow heading, but the ground stays flat. The track color runs from blue, slow, to the fastest color for the current usage, including a saved track. The dots are that scale. Tap the map, then Route, to ask Apple for a walking, cycling, or driving path. Hike and run use walking, bicycle uses cycling, car and motorbike use driving. Aircraft and watercraft ask you to pick walk, bicycle, or car. The request needs a network and sends the two coordinates to Apple. The logged track stays on this phone. Tap the map, then Address, to ask Apple for the nearest street address of that one point. The lookup needs a network, including on an offline map, and sends that coordinate to Apple. The logged track stays on this phone. Tap the route chip to clear the line. Straight-line Distance is separate. The HUD shows large speed, the unit from Settings, and accuracy in metres. While logging it also shows odometer, elapsed time, and REC. It is hidden when a saved track is on the map and you are not logging. Altitude is not on the HUD.",
+                        "A térkép a fixre centrál, ha van. Idle-ben elhúzható. Indítás után követ, a kamerát kb. 52 fokra dönti, és a térképet meg a nyilat a haladási iránnyal forgatja. 1 m/s felett a course, alatta az iránytű. Két ujjal dönthető, és a dőlés megmarad. Az észak-tárcsa visszaállítja az 52 fokot és a menetirányt. A teljes track a képen felülnézet, észak felé. Az Apple standard, műhold és hibrid valós domborzatot használ, API-kulcs nélkül. A letöltött OSM vagy Turistautak térkép dönthető és menetirányba fordul, a talaj lapos marad. A nyomvonal színe a kéktől, ami lassú, a használat leggyorsabb színéig tart, mentett útvonalon is. A pöttyök ez a skála. Koppintás, majd Útvonal: az Apple gyalog, kerékpárral vagy autóval útvonalat ad. Túra és futás gyalog, kerékpár kerékpár, autó és motor autó. Repülőnél és hajónál gyalog, kerékpár vagy autó közül választasz. A kéréshez hálózat kell, és a két koordináta az Apple-höz megy. A naplózott track a telefonon marad. Koppintás, majd Cím: az Apple ennek az egy pontnak a legközelebbi címét adja. A lekérdezéshez hálózat kell, offline térképen is, és ez az egy koordináta az Apple-höz megy. A naplózott track a telefonon marad. Az útvonal chipje törli a vonalat. A légvonalas Távolság külön van. A HUD a nagy sebességet, a beállított mértékegységet és a pontosságot mutatja méterben. Naplózáskor az út, az eltelt idő és a REC is látszik. Mentett tracknél, ha nem naplózol, a HUD rejtve van. A HUD nem mutat magasságot."
                     ))
                 }
                 section(L10n.text("OSM map options", "OSM térkép opciók"), id: "osm") {
@@ -298,7 +305,7 @@ struct HelpScreen: View {
                     ))
                 }
                 section(L10n.text("Privacy policy", "Adatvédelmi nyilatkozat"), id: "privacy") {
-                    Link("lkovari.github.io", destination: URL(string: "https://lkovari.github.io/KLHome/assets/bigfiles/gtl-privacy-policy.html")!)
+                    Link(L10n.text("Privacy policy", "Adatvédelmi nyilatkozat"), destination: URL(string: "https://lkovari.github.io/KLHome/assets/bigfiles/gtl-ios-private-policy.html")!)
                         .foregroundStyle(GtlColor.titleMagenta)
                 }
                 section(L10n.text("A stored trackpoint", "Egy tárolt pont"), id: "point") {
@@ -484,7 +491,12 @@ struct AccordionCard<Content: View>: View {
 struct LocationSettingsScreen: View {
     var body: some View {
         VStack(spacing: 16) {
-            Text(L10n.text("Location access is controlled in Settings.", "A helyhozzáférést a Beállításokban lehet kezelni."))
+            Text(L10n.text(
+                "Location access is controlled in Settings. Logging continues on a locked screen only when Location is Always. While Using the App stops new points when the screen locks.",
+                "A helyhozzáférést a Beállításokban lehet kezelni. Zárolt képernyőn a naplózás csak akkor megy tovább, ha a Helyzet Mindig. Az app használata közben a zárolás megállítja az új pontokat."
+            ))
+            .multilineTextAlignment(.center)
+            .padding(.horizontal)
             Button(L10n.text("Open Settings", "Beállítások megnyitása")) {
                 if let url = URL(string: UIApplication.openSettingsURLString) {
                     UIApplication.shared.open(url)

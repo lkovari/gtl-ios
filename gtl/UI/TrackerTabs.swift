@@ -55,31 +55,43 @@ struct TrackerScreen: View {
     }
 
     private var header: some View {
-        HStack {
-            Text("GPS Track Logger")
-                .font(.headline)
-                .foregroundStyle(GtlColor.titleMagenta)
-                .accessibilityIdentifier("brandTitle")
-            Spacer()
-            Button(model.logging ? L10n.text("Stop", "Stop") : L10n.text("Start", "Start")) {
-                model.logging ? model.stopLogging() : model.startLogging()
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text("GPS Track Logger")
+                    .font(.headline)
+                    .foregroundStyle(GtlColor.titleMagenta)
+                    .accessibilityIdentifier("brandTitle")
+                Spacer()
+                Button(model.logging ? L10n.text("Stop", "Stop") : L10n.text("Start", "Start")) {
+                    model.logging ? model.stopLogging() : model.startLogging()
+                }
+                .buttonStyle(GtlPrimaryButton(color: model.logging ? GtlColor.trackingOrange : GtlColor.startBlue))
+                .frame(width: 110)
+                .accessibilityIdentifier(model.logging ? "stopLogging" : "startLogging")
+                Menu {
+                    Button(L10n.text("Settings", "Beállítások")) { path.append("settings") }
+                    Button(L10n.text("Download offline map", "Offline térkép letöltése")) { path.append("maps") }
+                    Button(L10n.text("Saved tracks", "Mentett útvonalak")) { path.append("tracks") }
+                    Button(L10n.text("Help", "Súgó")) { path.append("help") }
+                    Button(L10n.text("About", "Névjegy")) { path.append("about") }
+                    Button(L10n.text("Location settings", "Helyzet beállítások")) { path.append("location") }
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.title3)
+                        .frame(width: 36, height: 36)
+                }
+                .accessibilityIdentifier("mainMenu")
             }
-            .buttonStyle(GtlPrimaryButton(color: model.logging ? GtlColor.trackingOrange : GtlColor.startBlue))
-            .frame(width: 110)
-            .accessibilityIdentifier(model.logging ? "stopLogging" : "startLogging")
-            Menu {
-                Button(L10n.text("Settings", "Beállítások")) { path.append("settings") }
-                Button(L10n.text("Download offline map", "Offline térkép letöltése")) { path.append("maps") }
-                Button(L10n.text("Saved tracks", "Mentett útvonalak")) { path.append("tracks") }
-                Button(L10n.text("Help", "Súgó")) { path.append("help") }
-                Button(L10n.text("About", "Névjegy")) { path.append("about") }
-                Button(L10n.text("Location settings", "Helyzet beállítások")) { path.append("location") }
-            } label: {
-                Image(systemName: "ellipsis")
-                    .font(.title3)
-                    .frame(width: 36, height: 36)
+            if model.logging && !model.recordsWhileLocked {
+                Text(L10n.text(
+                    "A locked screen stops this recording. Set Location to Always to keep the track.",
+                    "Zárolt képernyőn ez a rögzítés megáll. A folyamatos nyomvonalhoz a Helyzet legyen Mindig."
+                ))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("lockedScreenNotice")
             }
-            .accessibilityIdentifier("mainMenu")
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)

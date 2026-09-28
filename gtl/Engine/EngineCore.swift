@@ -280,6 +280,30 @@ enum FixAcceptance {
         hasAccuracy && accuracyMeters.isFinite && accuracyMeters > 0
     }
 
+    static let liveMaxAgeSeconds: TimeInterval = 10
+    static let locateMaxAgeSeconds: TimeInterval = 300
+    static let loggingMaxAgeSeconds: TimeInterval = 6 * 60 * 60
+
+    static func keepFix(
+        logging: Bool,
+        ageSeconds: TimeInterval,
+        locating: Bool,
+        fixMillis: Int64,
+        startedAtMillis: Int64?,
+        lastAcceptMillis: Int64?
+    ) -> Bool {
+        if logging {
+            if ageSeconds > loggingMaxAgeSeconds { return false }
+            if let lastAcceptMillis, fixMillis <= lastAcceptMillis { return false }
+            if lastAcceptMillis == nil, let startedAtMillis, fixMillis + 2_000 < startedAtMillis {
+                return false
+            }
+            return true
+        }
+        if locating && ageSeconds <= locateMaxAgeSeconds { return true }
+        return ageSeconds <= liveMaxAgeSeconds
+    }
+
     static func everyFixMinDistanceMeters(_ usage: UsageType?) -> Double {
         if let usage, usage.isPedestrianMode() {
             return pedestrianEveryFixMinDistanceMeters

@@ -206,7 +206,7 @@ struct MapTab: View {
 
     private var speedLegend: some View {
         HStack(spacing: 3) {
-            ForEach(0..<SpeedColor.palette.count, id: \.self) { bin in
+            ForEach(0..<SpeedColorScale.thresholds(for: model.settings.usageType).count + 1, id: \.self) { bin in
                 Circle()
                     .fill(SpeedColor.at(bin).color)
                     .frame(width: 8, height: 8)
@@ -840,12 +840,13 @@ struct OfflineMapRepresentable: UIViewRepresentable {
             let track = MLNLineStyleLayer(identifier: "line-track", source: overlay)
             track.predicate = NSPredicate(format: "paint == 'track'")
             track.lineColor = NSExpression(
-                format: "TERNARY(speedBin == 0, %@, TERNARY(speedBin == 1, %@, TERNARY(speedBin == 2, %@, TERNARY(speedBin == 3, %@, %@))))",
+                format: "TERNARY(speedBin == 0, %@, TERNARY(speedBin == 1, %@, TERNARY(speedBin == 2, %@, TERNARY(speedBin == 3, %@, TERNARY(speedBin == 4, %@, %@)))))",
                 SpeedColor.at(0).uiColor,
                 SpeedColor.at(1).uiColor,
                 SpeedColor.at(2).uiColor,
                 SpeedColor.at(3).uiColor,
-                SpeedColor.at(4).uiColor
+                SpeedColor.at(4).uiColor,
+                SpeedColor.at(5).uiColor
             )
             track.lineWidth = NSExpression(forConstantValue: 4)
             track.lineCap = NSExpression(forConstantValue: "round")

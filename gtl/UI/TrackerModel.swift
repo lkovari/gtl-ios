@@ -101,6 +101,7 @@ final class TrackerModel {
     var returnToMap = false
     var altimeterAvailable = false
     var poorGps = false
+    var recordsWhileLocked = false
     var showErrorLog = false
     private var versionTaps: [Date] = []
     private var lastTravelDegrees: Float?
@@ -247,7 +248,7 @@ final class TrackerModel {
         settings.baroPressureOffsetHpa = BaroAltitude.clampOffset(settings.baroPressureOffsetHpa)
         settings.optimizationTolerance = DouglasPeucker.clampTolerance(settings.optimizationTolerance)
         store.save(settings)
-        UIApplication.shared.isIdleTimerDisabled = logging && settings.keepScreenOnWhileLogging
+        UIApplication.shared.isIdleTimerDisabled = logging && (settings.keepScreenOnWhileLogging || !recordsWhileLocked)
         applyOfflineFilter()
         rebuildSpeedRuns()
     }
@@ -285,6 +286,7 @@ final class TrackerModel {
         let now = nowMillis()
         logging = false
         location.stopLogging()
+        recordsWhileLocked = false
         motion.stop()
         UIApplication.shared.isIdleTimerDisabled = false
         status = "Idle"
@@ -767,6 +769,10 @@ final class TrackerModel {
         }
         location.onAuthorization = { [weak self] _ in
             guard let self else { return }
+            self.recordsWhileLocked = self.location.recordsWhileLocked
+            if self.logging {
+                UIApplication.shared.isIdleTimerDisabled = self.settings.keepScreenOnWhileLogging || !self.recordsWhileLocked
+            }
             self.status = self.logging ? "Logging" : "Idle"
             self.onTabChange()
         }
@@ -817,9 +823,10 @@ final class TrackerModel {
             cloud.clear()
             status = "Logging"
             location.startLogging(activity: activityType(settings.usageType))
+            recordsWhileLocked = location.recordsWhileLocked
             if tab == .compass || tab == .map { location.startHeading() }
             motion.startLoggingSensors()
-            UIApplication.shared.isIdleTimerDisabled = settings.keepScreenOnWhileLogging
+            UIApplication.shared.isIdleTimerDisabled = settings.keepScreenOnWhileLogging || !recordsWhileLocked
         } catch {
             ErrorLogStore.record(action: "track.insert", error: error)
             status = "Logging stopped"
@@ -828,8 +835,15 @@ final class TrackerModel {
 
     private func ingest(_ location: RecordedFix) {
         let age = Date().timeIntervalSince(location.timestamp)
-        let locating = centerOnNextFix
-        guard age <= 10 || (locating && age <= 300) else { return }
+        let fixMillis = Int64(location.timestamp.timeIntervalSince1970 * 1000)
+        guard FixAcceptance.keepFix(
+            logging: logging,
+            ageSeconds: age,
+            locating: centerOnNextFix,
+            fixMillis: fixMillis,
+            startedAtMillis: startedAt,
+            lastAcceptMillis: lastAcceptMillis
+        ) else { return }
         let hasAccuracy = location.horizontalAccuracy >= 0
         guard FixAcceptance.hasUsableAccuracy(hasAccuracy, Float(location.horizontalAccuracy)) else { return }
         latitude = location.latitude
