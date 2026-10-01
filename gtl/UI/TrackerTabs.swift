@@ -3,6 +3,7 @@ import SwiftUI
 struct TrackerScreen: View {
     @Bindable var model: TrackerModel
     @Environment(\.colorScheme) private var scheme
+    @Environment(\.scenePhase) private var scenePhase
     @State private var path: [String] = []
 
     var body: some View {
@@ -38,6 +39,9 @@ struct TrackerScreen: View {
                 .toolbar(.visible, for: .navigationBar)
             }
         }
+        .onChange(of: scenePhase) { _, phase in
+            model.setSceneActive(phase == .active)
+        }
         .onChange(of: model.tab) { _, _ in model.onTabChange() }
         .onChange(of: model.returnToMap) { _, go in
             if go {
@@ -45,7 +49,10 @@ struct TrackerScreen: View {
                 model.returnToMap = false
             }
         }
-        .onAppear { model.onTabChange() }
+        .onAppear {
+            model.setSceneActive(scenePhase == .active)
+            model.onTabChange()
+        }
         .onChange(of: model.showErrorLog) { _, show in
             if show {
                 path.append("diagnostics")

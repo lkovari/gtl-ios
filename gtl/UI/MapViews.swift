@@ -148,7 +148,7 @@ struct MapTab: View {
                 userLongitude: model.longitude,
                 distanceLatitude: model.distanceTarget?.latitude,
                 distanceLongitude: model.distanceTarget?.longitude,
-                trackCount: model.trackPoints.count,
+                mapLineToken: model.mapLineToken,
                 routeCount: model.routeCoordinates.count,
                 travelDegrees: model.travelDegrees,
                 tiltResetToken: model.tiltResetToken,
@@ -465,8 +465,7 @@ struct OnlineMap: View {
         .mapControls {
             MapScaleView()
         }
-        .onChange(of: model.trackPoints.count) { _, _ in follow() }
-        .onChange(of: model.latitude) { _, _ in follow() }
+        .onChange(of: model.followToken) { _, _ in follow() }
         .onChange(of: model.focusToken) { _, _ in showTarget() }
         .onChange(of: model.zoomTicket) { _, _ in zoomBy(model.zoomStep) }
         .onChange(of: model.locateToken) { _, _ in showTarget() }
@@ -476,6 +475,10 @@ struct OnlineMap: View {
             model.beginMapTap(latitude: coordinate.latitude, longitude: coordinate.longitude, x: location.x, y: location.y)
         }
         .onMapCameraChange { context in
+            guard model.sceneActive else {
+                applyingFollow = false
+                return
+            }
             if applyingFollow {
                 applyingFollow = false
             } else {
@@ -488,12 +491,17 @@ struct OnlineMap: View {
                   let point = proxy.convert(CLLocationCoordinate2D(latitude: latitude, longitude: longitude), to: .local) else { return }
             model.moveMapTapAnchor(x: point.x, y: point.y)
         }
-        .onChange(of: model.travelDegrees) { _, _ in follow() }
         .onChange(of: model.logging) { _, logging in
             if logging { follow() }
         }
         .onChange(of: model.tiltResetToken) { _, _ in applyTiltReset() }
         }
+    }
+
+    private var endpointPoints: [GeoPoint] {
+        guard let first = model.speedRuns.first?.points.first else { return [] }
+        guard let last = model.speedRuns.last?.points.last else { return [first] }
+        return [first, last]
     }
 
     private func coordinates(_ points: [GeoPoint]) -> [CLLocationCoordinate2D] {
@@ -502,7 +510,7 @@ struct OnlineMap: View {
 
     @MapContentBuilder
     private var trackLines: some MapContent {
-        ForEach(Array(model.speedRuns.enumerated()), id: \.offset) { _, run in
+        ForEach(model.speedRuns, id: \.id) { run in
             MapPolyline(coordinates: coordinates(run.points))
                 .stroke(SpeedColor.at(run.bin).color, lineWidth: 4)
         }
@@ -525,7 +533,7 @@ struct OnlineMap: View {
 
     @MapContentBuilder
     private var endpoints: some MapContent {
-        let points = model.displayPoints
+        let points = endpointPoints
         if let start = TrackEndpoints.start(points) {
             Annotation("S", coordinate: coordinate(start)) {
                 Text("S").font(.caption.bold()).padding(5).background(.green).clipShape(Circle()).foregroundStyle(.white)
@@ -599,6 +607,7 @@ struct OnlineMap: View {
     }
 
     private func applyTiltReset() {
+        guard model.sceneActive else { return }
         let center = position.camera?.centerCoordinate
             ?? position.region?.center
             ?? CLLocationCoordinate2D(
@@ -619,11 +628,9 @@ struct OnlineMap: View {
     }
 
     private func follow() {
-        guard model.logging else { return }
-        let latitude = model.latitude ?? model.trackPoints.last?.latitude
-        let longitude = model.longitude ?? model.trackPoints.last?.longitude
-        guard let latitude, let longitude else { return }
-        if model.settings.keepWholeTrackOnScreen, let bounds = TrackCameraBounds.of(model.displayPoints, extra: nil) {
+        guard model.logging, model.sceneActive else { return }
+        guard let latitude = model.latitude, let longitude = model.longitude else { return }
+        if model.settings.keepWholeTrackOnScreen, let bounds = TrackCameraBounds.of(model.drawnPoints(), extra: nil) {
             let region = MKCoordinateRegion(
                 center: CLLocationCoordinate2D(latitude: (bounds.minLatitude + bounds.maxLatitude) / 2, longitude: (bounds.minLongitude + bounds.maxLongitude) / 2),
                 span: MKCoordinateSpan(latitudeDelta: max(0.01, bounds.maxLatitude - bounds.minLatitude), longitudeDelta: max(0.01, bounds.maxLongitude - bounds.minLongitude))
@@ -751,7 +758,7 @@ struct OfflineMapRepresentable: UIViewRepresentable {
     var userLongitude: Double?
     var distanceLatitude: Double?
     var distanceLongitude: Double?
-    var trackCount: Int
+    var mapLineToken: Int
     var routeCount: Int
     var travelDegrees: Double?
     var tiltResetToken: Int
@@ -779,6 +786,7 @@ struct OfflineMapRepresentable: UIViewRepresentable {
 
     func updateUIView(_ map: MLNMapView, context: Context) {
         context.coordinator.model = model
+        context.coordinator.lineToken = mapLineToken
         context.coordinator.features = features
         context.coordinator.layerEpoch = layerEpoch
         context.coordinator.zoomTicket = zoomTicket
@@ -787,7 +795,6 @@ struct OfflineMapRepresentable: UIViewRepresentable {
         context.coordinator.userLongitude = userLongitude
         context.coordinator.distanceLatitude = distanceLatitude
         context.coordinator.distanceLongitude = distanceLongitude
-        context.coordinator.trackCount = trackCount
         context.coordinator.routeCount = routeCount
         context.coordinator.travelDegrees = travelDegrees
         context.coordinator.tiltResetToken = tiltResetToken
@@ -820,8 +827,8 @@ struct OfflineMapRepresentable: UIViewRepresentable {
         var userLongitude: Double?
         var distanceLatitude: Double?
         var distanceLongitude: Double?
-        var trackCount = 0
         var routeCount = 0
+        var lineToken = 0
         var travelDegrees: Double?
         var tiltResetToken = 0
         var logging = false
@@ -873,6 +880,10 @@ struct OfflineMapRepresentable: UIViewRepresentable {
 
         func mapView(_ mapView: MLNMapView, regionDidChangeAnimated animated: Bool) {
             guard cameraSet else { return }
+            guard model.sceneActive else {
+                applyingFollow = false
+                return
+            }
             if applyingFollow {
                 applyingFollow = false
             } else {
@@ -1128,6 +1139,7 @@ struct OfflineMapRepresentable: UIViewRepresentable {
         }
 
         private func applyFollow(_ map: MLNMapView) {
+            guard model.sceneActive else { return }
             if tiltResetToken != appliedTilt {
                 appliedTilt = tiltResetToken
                 storedPitch = FollowCamera.defaultPitch

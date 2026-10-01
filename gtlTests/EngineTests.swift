@@ -524,6 +524,64 @@ final class EngineTests: XCTestCase {
         ])
         XCTAssertGreaterThan(stats.odometerMeters, 0)
         XCTAssertEqual(stats.movingMillis, 1000)
+        let rows = [
+            TrackSample(timestampMillis: 0, latitude: 47, longitude: 19, altitude: 10, speedMps: 0, bearing: 0, ambientTemperature: 4, eventKind: .START),
+            TrackSample(timestampMillis: 1000, latitude: 47.001, longitude: 19, altitude: 12, speedMps: 2, bearing: 0, ambientTemperature: nil, eventKind: .MOVE),
+            TrackSample(timestampMillis: 2500, latitude: 47.002, longitude: 19, altitude: nil, speedMps: 0.2, bearing: 0, ambientTemperature: 9, eventKind: .PAUSE)
+        ]
+        var fold = TrackStatsFold()
+        var previous: TrackSample?
+        for row in rows {
+            fold.add(row, previous: previous)
+            previous = row
+        }
+        XCTAssertEqual(fold.stats, TrackStatsCalculator.compute(rows))
+    }
+
+    func testDisplayTrackKeepsStableRunIdentity() {
+        var track = DisplayTrack()
+        track.append(TrackVertex(latitude: 47, longitude: 19, altitude: nil, speedMps: 0.2), usage: .RUNNER, toleranceMeters: 2)
+        track.append(TrackVertex(latitude: 47.001, longitude: 19, altitude: nil, speedMps: 0.2), usage: .RUNNER, toleranceMeters: 2)
+        let id = track.runs[0].id
+        track.append(TrackVertex(latitude: 47.001, longitude: 19.001, altitude: nil, speedMps: 0.2), usage: .RUNNER, toleranceMeters: 2)
+        XCTAssertEqual(track.runs.count, 1)
+        XCTAssertEqual(track.runs[0].id, id)
+        XCTAssertEqual(track.runs[0].bin, 0)
+        XCTAssertEqual(track.runs[0].points.count, 3)
+        track.append(TrackVertex(latitude: 47.002, longitude: 19.001, altitude: nil, speedMps: 5), usage: .RUNNER, toleranceMeters: 2)
+        XCTAssertEqual(track.runs.count, 2)
+        XCTAssertEqual(track.runs[0].id, id)
+        XCTAssertNotEqual(track.runs[1].id, id)
+        XCTAssertEqual(track.runs[1].bin, 5)
+        XCTAssertEqual(track.runs[0].points.last?.latitude ?? 0, track.runs[1].points.first?.latitude ?? 1, accuracy: 0.0000001)
+    }
+
+    func testDisplayTrackDropsShortPointsAndKeepsTheColorJoin() {
+        var track = DisplayTrack()
+        track.append(TrackVertex(latitude: 47, longitude: 19, altitude: nil, speedMps: 0.2), usage: .RUNNER, toleranceMeters: 2)
+        track.append(TrackVertex(latitude: 47.000008, longitude: 19, altitude: nil, speedMps: 0.2), usage: .RUNNER, toleranceMeters: 2)
+        track.append(TrackVertex(latitude: 47.001, longitude: 19, altitude: nil, speedMps: 0.2), usage: .RUNNER, toleranceMeters: 2)
+        XCTAssertEqual(track.runs.count, 1)
+        XCTAssertEqual(track.runs[0].points.count, 2)
+        XCTAssertEqual(track.runs[0].points[0].latitude, 47, accuracy: 0.0000001)
+        XCTAssertEqual(track.runs[0].points[1].latitude, 47.001, accuracy: 0.0000001)
+        let id = track.runs[0].id
+        track.append(TrackVertex(latitude: 47.002, longitude: 19, altitude: nil, speedMps: 5), usage: .RUNNER, toleranceMeters: 2)
+        XCTAssertEqual(track.runs[0].id, id)
+        XCTAssertEqual(track.runs.count, 2)
+        XCTAssertEqual(track.runs[0].points.last?.latitude ?? 0, track.runs[1].points.first?.latitude ?? 1, accuracy: 0.0000001)
+    }
+
+    func testCoalesceKeepsHostRunId() {
+        let point = GeoPoint(latitude: 47, longitude: 19)
+        var runs: [SpeedRun] = []
+        for index in 0..<301 {
+            runs.append(SpeedRun(id: index + 1, bin: index % 2, points: [point, point]))
+        }
+        let merged = SpeedColorScale.coalesce(runs)
+        XCTAssertEqual(merged.count, 300)
+        XCTAssertFalse(merged.contains { $0.id == 1 })
+        XCTAssertTrue(merged.contains { $0.id == 2 })
     }
 
     private func fix(t: Int64, lat: Double, lon: Double, accuracy: Float, sats: Int) -> TrackFix {

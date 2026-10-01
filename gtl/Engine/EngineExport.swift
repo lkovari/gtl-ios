@@ -148,8 +148,68 @@ struct TrackStats: Equatable {
     var temperatureRange: TemperatureRange?
 }
 
+struct TrackStatsFold {
+    var stats = TrackStats(
+        pointCount: 0, odometerMeters: 0, elapsedMillis: 0, movingMillis: 0, waitingMillis: 0,
+        maxSpeedMps: 0, averageSpeedMps: 0, maxAltitude: 0, minAltitude: 0, temperatureRange: nil
+    )
+    private var originMillis: Int64?
+    private var hasAltitude = false
+    private var hasSpeed = false
+    private var tempMin: Float?
+    private var tempMax: Float?
+
+    mutating func add(_ sample: TrackSample, previous: TrackSample?) {
+        stats.pointCount += 1
+        if originMillis == nil {
+            originMillis = sample.timestampMillis
+        }
+        if let previous {
+            stats.odometerMeters += FixAcceptance.haversineMeters(
+                previous.latitude, previous.longitude, sample.latitude, sample.longitude
+            )
+            let dt = max(0, sample.timestampMillis - previous.timestampMillis)
+            if let speed = sample.speedMps {
+                if speed >= TrackStatsCalculator.movingSpeedMps {
+                    stats.movingMillis += dt
+                } else {
+                    stats.waitingMillis += dt
+                }
+            }
+        }
+        stats.elapsedMillis = max(0, sample.timestampMillis - (originMillis ?? sample.timestampMillis))
+        if let temp = sample.ambientTemperature {
+            tempMin = tempMin.map { min($0, temp) } ?? temp
+            tempMax = tempMax.map { max($0, temp) } ?? temp
+            if let tempMin, let tempMax {
+                stats.temperatureRange = TemperatureRange(minCelsius: tempMin, maxCelsius: tempMax)
+            }
+        }
+        if let altitude = sample.altitude {
+            if hasAltitude {
+                stats.maxAltitude = max(stats.maxAltitude, altitude)
+                stats.minAltitude = min(stats.minAltitude, altitude)
+            } else {
+                stats.maxAltitude = altitude
+                stats.minAltitude = altitude
+                hasAltitude = true
+            }
+        }
+        if let speed = sample.speedMps {
+            if hasSpeed {
+                stats.maxSpeedMps = max(stats.maxSpeedMps, speed)
+            } else {
+                stats.maxSpeedMps = speed
+                hasSpeed = true
+            }
+        }
+        let movingSeconds = Double(stats.movingMillis) / 1000
+        stats.averageSpeedMps = movingSeconds > 0 ? Float(stats.odometerMeters / movingSeconds) : 0
+    }
+}
+
 enum TrackStatsCalculator {
-    private static let movingSpeedMps: Float = 0.5
+    static let movingSpeedMps: Float = 0.5
 
     static func compute(_ samples: [TrackSample]) -> TrackStats {
         if samples.isEmpty {

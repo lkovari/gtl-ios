@@ -357,6 +357,22 @@ Az út kék szaggatott vonal, külön a sebesség szerint színezett tracktől �
 
 Az Indítás az előtérben rögzít, amint a hely engedélyezett. Zárolt képernyőn a nyomvonal csak akkor megy tovább, ha a Helyzet Mindig. A kék jelző a Stopig látszik. Ha a Mindig ugyanazon az Indításon jön meg, a háttérrögzítés azonnal bekapcsol. Az app használata közben a zárolás megállítja az új pontokat, és a cím alatt egy sor ezt kiírja. Beállítások → Rögzítés → Képernyő bekapcsolva naplózás közben csak a kijelzőt tartja ébren. Nem helyettesíti a Mindig engedélyt.
 
+### Prevent Possible Crash
+
+Egy hosszú futás vagy túra, nyitott térképpel, üres app-hibanaplóval kiléphet. A képernyő zárol, a döntött, valós domborzatú térkép tovább követ, és minden elfogadott pont újraépítette a színes vonalat. Az iOS memória miatt leállíthatja a folyamatot, vagy a MapKit a feloldáskor hal meg. Nem a rögzítés lép ki.
+
+Amíg a session naplóz és a jelenet nem aktív — zárolt képernyő, appváltó vagy a Vezérlőközpont —, a nyomvonal megy tovább. A helyzetfrissítés, a háttérben tartott folyamat, az elfogadott pontok, a simítás, a barométer-kalibrálás és az SQLite-írás Mindig engedélynél tovább fut. A mozgás és a barométer másodpercenként tízszer mér. Minden mentett pont megkapja a legutóbbi dőlést és nyomást. Ezek a minták nem mennek ki a képernyőre.
+
+A térkép a helyén marad. Nem bontjuk le és nem építjük újra, mert a feloldáskor ettől omlott össze a MapKit. Nem kap új kamerát, és az iránytű sem forgatja. A helyzet, az irány, a sebesség, a színes vonal, a még el nem fogadott farok, a fixfelhő és a HUD összegei az utolsó képkockán maradnak. Egy kóbor kamerahívás nem írja vissza az irányt vagy a dőlést.
+
+Amikor a jelenet újra aktív, ez a visszatartott állapot egyszer jelenik meg, és a kamera egyszer követ, az utolsó helyzetre. A zárolás alatti köztes kamerapózok elvesznek.
+
+A színes vonal nem épül újra a teljes trackből minden pontnál. Azonos sebességszínű pont a legutolsó szakasz végére kerül, és a szakasz azonosítója megmarad. Új szín új szakaszt nyit, a csatlakozási ponttal együtt. Háromszáz szakasz fölött a legrövidebb beolvad a szomszédjába, és a szomszéd tartja meg az azonosítóját. Csak a nyitott szakasz alakja változik. Egy színen belül a rajzolt pontokat Douglas–Peucker ritkítja. Ha a vonaloptimalizálás ki van kapcsolva, a tűrés a használat alapértéke: futásnál és túránál 2 m. Ha be van kapcsolva, a tűrés a csúszka, továbbra is színenként, így egy későbbi pont nem számozza újra a már megrajzolt szakaszokat. A teljes vonal csak mentett session betöltésekor, a térkép track törlésekor, illetve használat- vagy beállításváltáskor épül újra.
+
+A tárolt track továbbra is minden elfogadott pont, futásnál és túránál a kb. 0,5 m-enkénti pont is. A statisztika, a szintmetszet, a GPX és a KMZ ezt a teljes listát használja. A szintmetszet akkor készül, amikor az Útvonal fül látszik, és amikor a zárolt session visszajön az előtérbe, nem minden pontnál, amíg a Térkép fül van elöl. Minden új minta a futó összeget frissíti, ezért a térkép HUD távolsága és ideje bekapcsolt kijelzőn tovább ketyeg.
+
+Bekapcsolt kijelzőn a követő kamera változatlan: kb. 52 fokos dőlés, 1 m/s-tól GPS course, alatta iránytű, 5 fokos lépcső, és a teljes track a képen. Az Indítás, a Stop, a Mindig, a zárolt képernyő figyelmeztetése és az idle timer változatlan.
+
 ### App Store képek
 
 Az App Store-nak nincs Google Play-s feature graphic helye (1024×500). Ennél az iPhone-alkalmazásnál a kötelező kép a 6,9 hüvelykes képernyőkép-sor. Az ikon a buildből jön, külön nem töltődik fel. iPad-készlet nem kell: a target csak iPhone (`TARGETED_DEVICE_FAMILY = 1`). Ha a 6,9 hüvelykes sor megvan, a 6,5 hüvelykes és a kisebb méretek az Apple skálázásával mennek, külön fájl nem kötelező.

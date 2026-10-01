@@ -351,6 +351,22 @@ The path is a blue dashed line, separate from the speed-colored track and from t
 
 Start records in the foreground as soon as location is allowed. The track continues after the screen locks only when Location is Always. The blue indicator stays until Stop. If Always is granted during that same Start, background recording turns on immediately. While Using the App, locking the screen stops new points, and a line under the title says so. Settings → Recording → Keep screen on while logging only keeps the display awake. It does not replace Always.
 
+### Prevent Possible Crash
+
+A long Run or Hike with the map in front can quit with an empty app error log. The screen locks, the tilted realistic map keeps following, and every accepted point used to rebuild the colored line. iOS can then stop the process for memory, or MapKit can die as the phone unlocks. The recording itself is not what quits.
+
+While a session is logging and the scene is not active — the lock screen, the app switcher, or Control Center — the track keeps going. Location updates, the background activity session, accepted points, smoothing, barometer calibration, and the SQLite write still run when Location is Always. Motion and the barometer still sample ten times a second. Each saved point still stores the latest lean and pressure. Those samples are not pushed to the screen.
+
+The map stays in place. It is not taken down and built again, which is what used to crash MapKit on unlock. It does not receive a new camera, and the compass does not turn it. Position, heading, speed, the colored line, the live tail, the fix cloud, and the HUD totals stay on the last frame. A stray camera callback does not write the heading or the pitch back.
+
+When the scene is active again, that held state is published once and the camera follows once, to the latest position. Camera poses from the locked interval are dropped.
+
+The colored line is no longer rebuilt from the whole track on every point. A point of the same speed color extends the last segment and keeps that segment's identity. A new color starts a new segment and shares the join point. Above three hundred segments, the shortest one is absorbed into a neighbor, and that neighbor keeps its identity. Only the open segment changes shape. Vertices inside a color are simplified with Douglas–Peucker. With line optimization off, the tolerance is the usage default: 2 m for Run and Hike. With optimization on, the tolerance is the slider, still applied inside each color, so a later point cannot renumber the segments already drawn. The whole line is rebuilt only when a saved session is loaded, the map track is cleared, or the usage or the settings change.
+
+The stored track is still every accepted point, including a Run or Hike point about every 0.5 m. Statistics, the elevation profile, GPX, and KMZ use that full list. The elevation chart is built when the Route tab is shown and when a locked session returns to the foreground, not on every point while the Map tab is up. Each new sample updates the running totals, so distance and elapsed time on the map HUD still tick while the screen is on.
+
+With the screen on, the follow camera is unchanged: about 52 degrees of pitch, GPS course at 1 m/s or faster, compass below that, 5 degree steps, and Keep whole track on screen. Start, Stop, Always, the locked-screen warning, and the idle timer are unchanged.
+
 ### App Store images
 
 The App Store has no Google Play feature-graphic slot (1024×500). For this iPhone app the required image set is the 6.9-inch screenshot row. The icon ships inside the build and is not uploaded on its own. An iPad set is not required: the target is iPhone only (`TARGETED_DEVICE_FAMILY = 1`). When the 6.9-inch row is present, Apple scales it for 6.5-inch and smaller displays, so those files are optional.

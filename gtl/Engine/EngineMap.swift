@@ -305,6 +305,7 @@ struct SpeedColor: Equatable {
 }
 
 struct SpeedRun: Equatable {
+    var id: Int
     var bin: Int
     var points: [GeoPoint]
 }
@@ -384,13 +385,15 @@ enum SpeedColorScale {
     static func runs(points: [TrackVertex], usage: UsageType) -> [SpeedRun] {
         guard points.count >= 2 else { return [] }
         var built: [SpeedRun] = []
+        var nextId = 1
         var active = bin(speedMps: points[1].speedMps, usage: usage)
         var current: [GeoPoint] = [points[0].point, points[1].point]
         if points.count > 2 {
             for index in 2..<points.count {
                 let next = bin(speedMps: points[index].speedMps, usage: usage)
                 if next != active {
-                    built.append(SpeedRun(bin: active, points: current))
+                    built.append(SpeedRun(id: nextId, bin: active, points: current))
+                    nextId += 1
                     active = next
                     current = [points[index - 1].point, points[index].point]
                 } else {
@@ -399,15 +402,15 @@ enum SpeedColorScale {
             }
         }
         if current.count >= 2 {
-            built.append(SpeedRun(bin: active, points: current))
+            built.append(SpeedRun(id: nextId, bin: active, points: current))
         }
         return coalesce(built)
     }
 
-    static func coalesce(_ runs: [SpeedRun]) -> [SpeedRun] {
-        guard runs.count > maxRuns else { return runs }
+    static func coalesce(_ runs: [SpeedRun], limit: Int = maxRuns) -> [SpeedRun] {
+        guard runs.count > limit else { return runs }
         var merged = runs
-        while merged.count > maxRuns {
+        while merged.count > limit {
             var shortest = 0
             for index in 1..<merged.count where merged[index].points.count < merged[shortest].points.count {
                 shortest = index
@@ -458,6 +461,76 @@ enum SpeedColorScale {
         }
         joined.append(first)
         return joined
+    }
+}
+
+struct DisplayTrack {
+    private(set) var runs: [SpeedRun] = []
+    private var nextId = 1
+    private var openRaw: [TrackVertex] = []
+    private var openBin: Int?
+    private var openId: Int?
+
+    mutating func rebuild(points: [TrackVertex], usage: UsageType, toleranceMeters: Double) {
+        runs = []
+        nextId = 1
+        openRaw = []
+        openBin = nil
+        openId = nil
+        for point in points {
+            append(point, usage: usage, toleranceMeters: toleranceMeters)
+        }
+    }
+
+    mutating func append(_ point: TrackVertex, usage: UsageType, toleranceMeters: Double) {
+        let tolerance = DouglasPeucker.clampTolerance(toleranceMeters)
+        let bin = SpeedColorScale.bin(speedMps: point.speedMps, usage: usage)
+        if openRaw.isEmpty {
+            openRaw = [point]
+            openBin = bin
+            return
+        }
+        if bin == openBin {
+            openRaw.append(point)
+            publishOpen(tolerance)
+            return
+        }
+        let join = openRaw[openRaw.count - 1]
+        publishOpen(tolerance)
+        openRaw = [join, point]
+        openBin = bin
+        openId = nil
+        publishOpen(tolerance)
+    }
+
+    private mutating func publishOpen(_ tolerance: Double) {
+        guard openRaw.count >= 2, let bin = openBin else { return }
+        let points = DouglasPeucker.simplify(openRaw, toleranceMeters: tolerance).map(\.point)
+        if let openId, let index = runs.firstIndex(where: { $0.id == openId }) {
+            runs[index].points = points
+            runs[index].bin = bin
+        } else {
+            let id = nextId
+            nextId += 1
+            openId = id
+            runs.append(SpeedRun(id: id, bin: bin, points: points))
+        }
+        capClosedRuns()
+    }
+
+    private mutating func capClosedRuns() {
+        guard runs.count > SpeedColorScale.maxRuns else { return }
+        guard let openId, let openIndex = runs.firstIndex(where: { $0.id == openId }) else {
+            runs = SpeedColorScale.coalesce(runs)
+            return
+        }
+        var closed = runs
+        let open = closed.remove(at: openIndex)
+        if closed.count >= SpeedColorScale.maxRuns {
+            closed = SpeedColorScale.coalesce(closed, limit: SpeedColorScale.maxRuns - 1)
+        }
+        runs = closed
+        runs.append(open)
     }
 }
 

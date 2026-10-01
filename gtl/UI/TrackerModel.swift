@@ -56,6 +56,10 @@ final class TrackerModel {
     var sessions: [TrackSession] = []
     var trackPoints: [TrackVertex] = []
     var speedRuns: [SpeedRun] = []
+    var liveTail: SpeedRun?
+    var sceneActive = true
+    var followToken = 0
+    var mapLineToken = 0
     var elevation: [ElevationSample] = []
     var selectedSessionId: Int64?
     var mapCleared = false
@@ -134,8 +138,27 @@ final class TrackerModel {
     private let filter = KalmanTrackFilter()
     private let cloud = FixCloudBuffer()
     private var samples: [TrackSample] = []
+    private var statsFold = TrackStatsFold()
+    private var displayTrack = DisplayTrack()
+    private var displayDirty = false
     private var accel = (Float(0), Float(0), Float(0))
     private var gravity = (Float(0), Float(0), Float(1))
+    private var latestLatitude: Double?
+    private var latestLongitude: Double?
+    private var latestAccuracy: Float?
+    private var latestVerticalAccuracy: Float?
+    private var latestAltitude: Double?
+    private var latestEllipsoidalAltitude: Double?
+    private var latestFixAt: Date?
+    private var latestSpeed: Float?
+    private var latestBearing: Float?
+    private var latestHeadingDegrees: Float?
+    private var latestHeadingAccuracy: Int?
+    private var latestDeclination: Float?
+    private var latestTravelDegrees: Double?
+    private var latestLean: Float?
+    private var latestBaro: Double?
+    private var latestPressure: Float?
     private var indexTask: Task<Void, Never>?
     private var searchTask: Task<Void, Never>?
     private var searchGeneration = 0
@@ -184,40 +207,135 @@ final class TrackerModel {
         )
     }
 
-    var displayPoints: [GeoPoint] {
-        displayVertices.map(\.point)
+    func drawnPoints() -> [GeoPoint] {
+        var points: [GeoPoint] = []
+        for run in speedRuns {
+            if points.isEmpty {
+                points.append(contentsOf: run.points)
+            } else {
+                points.append(contentsOf: run.points.dropFirst())
+            }
+        }
+        if let tail = liveTail {
+            if points.isEmpty {
+                points.append(contentsOf: tail.points)
+            } else {
+                points.append(contentsOf: tail.points.dropFirst())
+            }
+        }
+        return points
     }
 
-    var liveTail: SpeedRun? {
-        guard logging, let last = trackPoints.last, let latitude, let longitude else { return nil }
-        guard FixAcceptance.haversineMeters(last.latitude, last.longitude, latitude, longitude) > 3 else { return nil }
-        return SpeedRun(
-            bin: SpeedColorScale.bin(speedMps: speedMps, usage: settings.usageType),
+    func setSceneActive(_ active: Bool) {
+        guard sceneActive != active else { return }
+        sceneActive = active
+        guard active else { return }
+        publishLiveFix()
+        if logging {
+            refreshElevation(force: true)
+        }
+    }
+
+    private var publishesLiveUI: Bool { !logging || sceneActive }
+
+    private func displayToleranceMeters() -> Double {
+        if settings.optimizationActive {
+            return settings.optimizationTolerance
+        }
+        return settings.usageType.defaultSmoothing().optimizationToleranceMeters
+    }
+
+    private func rebuildSpeedRuns() {
+        displayTrack.rebuild(
+            points: trackVisible ? trackPoints : [],
+            usage: settings.usageType,
+            toleranceMeters: displayToleranceMeters()
+        )
+        displayDirty = true
+        guard publishesLiveUI else { return }
+        speedRuns = displayTrack.runs
+        displayDirty = false
+        refreshLiveTail()
+        mapLineToken += 1
+    }
+
+    private func noteSample(_ sample: TrackSample) {
+        let previous = samples.last
+        statsFold.add(sample, previous: previous)
+        samples.append(sample)
+    }
+
+    private func refreshElevation(force: Bool) {
+        guard force || (tab == .route && publishesLiveUI) else { return }
+        let baro = latestBaro
+        elevation = ElevationSeries.downsample(ElevationSeries.fromPoints(trackPoints.map {
+            ElevationPoint(latitude: $0.latitude, longitude: $0.longitude, gpsAltitude: $0.altitude, baroAltitude: baro)
+        }))
+    }
+
+    private func refreshLiveTail() {
+        guard logging, let last = trackPoints.last, let latitude = latestLatitude, let longitude = latestLongitude else {
+            liveTail = nil
+            return
+        }
+        guard FixAcceptance.haversineMeters(last.latitude, last.longitude, latitude, longitude) > 3 else {
+            liveTail = nil
+            return
+        }
+        liveTail = SpeedRun(
+            id: -1,
+            bin: SpeedColorScale.bin(speedMps: latestSpeed, usage: settings.usageType),
             points: [last.point, GeoPoint(latitude: latitude, longitude: longitude, altitude: nil)]
         )
     }
 
-    private var displayVertices: [TrackVertex] {
-        guard trackVisible else { return [] }
-        return TrackLine.withLiveEnd(
-            simplifiedTrack(),
-            logging: logging,
-            latitude: latitude,
-            longitude: longitude,
-            speedMps: speedMps
-        )
-    }
-
-    private func simplifiedTrack() -> [TrackVertex] {
-        guard trackVisible else { return [] }
-        if settings.optimizationActive {
-            return DouglasPeucker.simplify(trackPoints, toleranceMeters: DouglasPeucker.clampTolerance(settings.optimizationTolerance))
+    private func publishLiveFix() {
+        guard publishesLiveUI else { return }
+        latitude = latestLatitude
+        longitude = latestLongitude
+        accuracy = latestAccuracy
+        verticalAccuracy = latestVerticalAccuracy
+        altitude = latestAltitude
+        ellipsoidalAltitude = latestEllipsoidalAltitude
+        lastFixAt = latestFixAt
+        speedMps = latestSpeed
+        bearing = latestBearing
+        headingDegrees = latestHeadingDegrees
+        headingAccuracy = latestHeadingAccuracy
+        declination = latestDeclination
+        travelDegrees = latestTravelDegrees
+        leanAngle = latestLean
+        baroAltitude = latestBaro
+        pressureHpa = latestPressure
+        fixCloud = cloud.snapshot()
+        if !samples.isEmpty {
+            stats = statsFold.stats
         }
-        return trackPoints
+        let lineChanged = displayDirty
+        if displayDirty {
+            speedRuns = displayTrack.runs
+            displayDirty = false
+        }
+        let previousTail = liveTail
+        refreshLiveTail()
+        if lineChanged || liveTail != previousTail {
+            mapLineToken += 1
+        }
+        if logging {
+            followToken += 1
+        }
     }
 
-    private func rebuildSpeedRuns() {
-        speedRuns = SpeedColorScale.runs(points: simplifiedTrack(), usage: settings.usageType)
+    private func publishHeading() {
+        guard publishesLiveUI else { return }
+        headingDegrees = latestHeadingDegrees
+        headingAccuracy = latestHeadingAccuracy
+        declination = latestDeclination
+        let previous = travelDegrees
+        travelDegrees = latestTravelDegrees
+        if logging && travelDegrees != previous {
+            followToken += 1
+        }
     }
 
     func acceptDisclaimer() {
@@ -321,15 +439,15 @@ final class TrackerModel {
         status = "Idle"
         guard let sessionId else { return }
         let stop = GpsEvent(
-            id: 0, sessionId: sessionId, timestamp: now, latitude: latitude ?? 0, longitude: longitude ?? 0,
-            altitude: altitude, speed: 0, bearing: bearing ?? 0, accuracy: accuracy ?? 0, satellitesInFix: -1,
-            ambientTemperature: nil, accelX: accel.0, accelY: accel.1, accelZ: accel.2, leanAngle: leanAngle,
+            id: 0, sessionId: sessionId, timestamp: now, latitude: latestLatitude ?? 0, longitude: latestLongitude ?? 0,
+            altitude: latestAltitude, speed: 0, bearing: latestBearing ?? 0, accuracy: latestAccuracy ?? 0, satellitesInFix: -1,
+            ambientTemperature: nil, accelX: accel.0, accelY: accel.1, accelZ: accel.2, leanAngle: latestLean,
             usageType: settings.usageType.rawValue, isPlacemark: true, eventKind: EventKind.STOP.rawValue,
-            baroAltitude: baroAltitude, pressureHpa: pressureHpa
+            baroAltitude: latestBaro, pressureHpa: latestPressure
         )
         Task {
             do {
-                if latitude != nil { try await database?.insert(stop) }
+                if latestLatitude != nil { try await database?.insert(stop) }
                 try await database?.stopSession(id: sessionId, at: now)
             } catch {
                 ErrorLogStore.record(action: "track.stop", error: error)
@@ -827,6 +945,9 @@ final class TrackerModel {
     }
 
     func onTabChange() {
+        if tab == .route {
+            refreshElevation(force: true)
+        }
         if logging {
             if tab == .compass || tab == .map { location.startHeading() } else { location.stopHeading() }
             return
@@ -857,12 +978,13 @@ final class TrackerModel {
         location.onFix = { [weak self] fix in self?.ingest(fix) }
         location.onHeading = { [weak self] heading in
             guard let self else { return }
-            self.headingDegrees = Float(heading.trueHeading >= 0 ? heading.trueHeading : heading.magneticHeading)
-            self.declination = Float(heading.trueHeading - heading.magneticHeading)
-            self.headingAccuracy = Int(heading.headingAccuracy.rounded())
+            self.latestHeadingDegrees = Float(heading.trueHeading >= 0 ? heading.trueHeading : heading.magneticHeading)
+            self.latestDeclination = Float(heading.trueHeading - heading.magneticHeading)
+            self.latestHeadingAccuracy = Int(heading.headingAccuracy.rounded())
             self.compassMagnetic = Float(heading.magneticHeading)
             self.compassShift = heading.trueHeading >= 0 ? Float(heading.trueHeading - heading.magneticHeading) : nil
             self.refreshTravelHeading()
+            self.publishHeading()
         }
         location.onAuthorization = { [weak self] status in
             guard let self else { return }
@@ -878,19 +1000,24 @@ final class TrackerModel {
             guard let self else { return }
             self.gravity = (Float(data.gravity.x), Float(data.gravity.y), Float(data.gravity.z))
             self.accel = (Float(data.userAcceleration.x), Float(data.userAcceleration.y), Float(data.userAcceleration.z))
-            self.leanAngle = BikeLeanAngle.fromGravity(ax: self.gravity.0, ay: self.gravity.1, az: self.gravity.2)
+            self.latestLean = BikeLeanAngle.fromGravity(ax: self.gravity.0, ay: self.gravity.1, az: self.gravity.2)
+            guard self.publishesLiveUI else { return }
+            self.leanAngle = self.latestLean
         }
         motion.onPressure = { [weak self] data in
             guard let self else { return }
             let kPa = data.pressure.doubleValue
-            self.pressureHpa = Float(kPa * 10)
-            self.baroAltitude = BaroAltitude.displayedMeters(
-                pressureHpa: self.pressureHpa,
+            self.latestPressure = Float(kPa * 10)
+            self.latestBaro = BaroAltitude.displayedMeters(
+                pressureHpa: self.latestPressure,
                 storedBaro: nil,
                 qnhHpa: self.settings.qnhHpa,
                 offsetHpa: self.settings.baroPressureOffsetHpa,
-                gpsMeters: self.altitude
+                gpsMeters: self.latestAltitude
             )
+            guard self.publishesLiveUI else { return }
+            self.pressureHpa = self.latestPressure
+            self.baroAltitude = self.latestBaro
         }
         downloader.onProgress = { [weak self] id, fraction in self?.downloadFraction[id] = fraction }
         downloader.onFailed = { [weak self] _, message in self?.downloadError = message }
@@ -914,6 +1041,7 @@ final class TrackerModel {
             lastAcceptMillis = nil
             baroCalibrated = false
             samples = []
+            statsFold = TrackStatsFold()
             trackPoints = []
             rebuildSpeedRuns()
             headingUp = true
@@ -944,25 +1072,28 @@ final class TrackerModel {
         ) else { return }
         let hasAccuracy = location.horizontalAccuracy >= 0
         guard FixAcceptance.hasUsableAccuracy(hasAccuracy, Float(location.horizontalAccuracy)) else { return }
-        latitude = location.latitude
-        longitude = location.longitude
-        accuracy = Float(location.horizontalAccuracy)
-        lastFixAt = location.timestamp
+        latestLatitude = location.latitude
+        latestLongitude = location.longitude
+        latestAccuracy = Float(location.horizontalAccuracy)
+        latestFixAt = location.timestamp
         if location.verticalAccuracy >= 0 {
-            verticalAccuracy = Float(location.verticalAccuracy)
-            altitude = GpsAltitude.pick(
+            latestVerticalAccuracy = Float(location.verticalAccuracy)
+            latestAltitude = GpsAltitude.pick(
                 gnssMsl: location.altitude,
                 fusedMsl: nil,
                 gnssEllipsoid: location.ellipsoidalAltitude,
                 fusedEllipsoid: nil
             )
-            ellipsoidalAltitude = GpsAltitude.isPlausible(location.ellipsoidalAltitude) ? location.ellipsoidalAltitude : nil
+            latestEllipsoidalAltitude = GpsAltitude.isPlausible(location.ellipsoidalAltitude) ? location.ellipsoidalAltitude : nil
         } else {
-            verticalAccuracy = nil
-            ellipsoidalAltitude = nil
+            latestVerticalAccuracy = nil
+            latestEllipsoidalAltitude = nil
         }
-        if location.speed >= 0 { lastSpeed = Float(location.speed); speedMps = lastSpeed }
-        if location.course >= 0 { bearing = Float(location.course) }
+        if location.speed >= 0 {
+            lastSpeed = Float(location.speed)
+            latestSpeed = lastSpeed
+        }
+        if location.course >= 0 { latestBearing = Float(location.course) }
         refreshTravelHeading()
         cloud.observe(
             FixCloudSample(
@@ -970,41 +1101,41 @@ final class TrackerModel {
                 latitude: location.latitude,
                 longitude: location.longitude,
                 accuracyMeters: Float(location.horizontalAccuracy),
-                speedMps: speedMps ?? 0
+                speedMps: latestSpeed ?? 0
             ),
             pauseSpeedMps: settings.usageType.pauseSpeedMps()
         )
-        fixCloud = cloud.snapshot()
-        if centerOnNextFix {
+        if centerOnNextFix && publishesLiveUI {
             centerOnNextFix = false
             showCurrentPosition(location.latitude, location.longitude)
         }
         guard logging, let sessionId else {
             status = "Idle"
+            publishLiveFix()
             return
         }
         var fix = TrackFix(
             timestampMillis: Int64(location.timestamp.timeIntervalSince1970 * 1000),
             latitude: location.latitude,
             longitude: location.longitude,
-            altitude: altitude ?? 0,
-            speedMps: speedMps ?? lastSpeed,
-            bearing: bearing ?? 0,
+            altitude: latestAltitude ?? 0,
+            speedMps: latestSpeed ?? lastSpeed,
+            bearing: latestBearing ?? 0,
             accuracyMeters: Float(location.horizontalAccuracy),
             satellitesInFix: -1
         )
-        if let altitude, BaroAltitude.autoCalibrateEligible(
-            pressureHpa: pressureHpa,
-            gpsAltitudeMeters: altitude,
+        if let gpsAltitude = latestAltitude, BaroAltitude.autoCalibrateEligible(
+            pressureHpa: latestPressure,
+            gpsAltitudeMeters: gpsAltitude,
             alreadyCalibratedThisSession: baroCalibrated,
             enabled: settings.autoCalibrateBaroEnabled,
             previousGpsAltitudeMeters: previousGpsAltitude
-        ), let pressureHpa {
-            settings.baroPressureOffsetHpa = BaroAltitude.offsetHpa(pressureHpa: pressureHpa, gpsMeters: altitude, qnhHpa: settings.qnhHpa)
+        ), let pressure = latestPressure {
+            settings.baroPressureOffsetHpa = BaroAltitude.offsetHpa(pressureHpa: pressure, gpsMeters: gpsAltitude, qnhHpa: settings.qnhHpa)
             baroCalibrated = true
             store.save(settings)
         }
-        previousGpsAltitude = altitude
+        previousGpsAltitude = latestAltitude
         if settings.trackSmoothingEnabled {
             fix = filter.observe(fix, usage: settings.usageType, strength: settings.smoothingStrengthValue, stationaryLock: settings.stationaryLockEnabled)
         }
@@ -1017,6 +1148,7 @@ final class TrackerModel {
                 poorGps = true
                 status = "Waiting for GPS"
             }
+            publishLiveFix()
             return
         }
         poorGps = false
@@ -1031,23 +1163,22 @@ final class TrackerModel {
         }
         lastAccepted = fix
         lastAcceptMillis = fix.timestampMillis
-        trackPoints.append(TrackVertex(latitude: fix.latitude, longitude: fix.longitude, altitude: altitude, speedMps: fix.speedMps))
-        rebuildSpeedRuns()
-        samples.append(TrackSample(
+        trackPoints.append(TrackVertex(latitude: fix.latitude, longitude: fix.longitude, altitude: latestAltitude, speedMps: fix.speedMps))
+        displayTrack.append(trackPoints[trackPoints.count - 1], usage: settings.usageType, toleranceMeters: displayToleranceMeters())
+        displayDirty = true
+        noteSample(TrackSample(
             timestampMillis: fix.timestampMillis, latitude: fix.latitude, longitude: fix.longitude,
-            altitude: altitude, speedMps: fix.speedMps, bearing: fix.bearing, ambientTemperature: nil, eventKind: kind
+            altitude: latestAltitude, speedMps: fix.speedMps, bearing: fix.bearing, ambientTemperature: nil, eventKind: kind
         ))
-        stats = TrackStatsCalculator.compute(samples)
-        elevation = ElevationSeries.downsample(ElevationSeries.fromPoints(trackPoints.map {
-            ElevationPoint(latitude: $0.latitude, longitude: $0.longitude, gpsAltitude: $0.altitude, baroAltitude: baroAltitude)
-        }))
+        refreshElevation(force: false)
         let event = GpsEvent(
             id: 0, sessionId: sessionId, timestamp: fix.timestampMillis, latitude: fix.latitude, longitude: fix.longitude,
-            altitude: altitude, speed: fix.speedMps, bearing: fix.bearing, accuracy: fix.accuracyMeters, satellitesInFix: -1,
-            ambientTemperature: nil, accelX: accel.0, accelY: accel.1, accelZ: accel.2, leanAngle: leanAngle,
+            altitude: latestAltitude, speed: fix.speedMps, bearing: fix.bearing, accuracy: fix.accuracyMeters, satellitesInFix: -1,
+            ambientTemperature: nil, accelX: accel.0, accelY: accel.1, accelZ: accel.2, leanAngle: latestLean,
             usageType: settings.usageType.rawValue, isPlacemark: kind != .MOVE, eventKind: kind.rawValue,
-            baroAltitude: baroAltitude, pressureHpa: pressureHpa
+            baroAltitude: latestBaro, pressureHpa: latestPressure
         )
+        publishLiveFix()
         let database = database
         let previous = writeChain
         writeChain = Task {
@@ -1136,14 +1267,14 @@ final class TrackerModel {
 
     private func refreshTravelHeading() {
         guard let aim = TravelHeading.resolve(
-            courseDegrees: bearing,
-            speedMps: speedMps,
+            courseDegrees: latestBearing,
+            speedMps: latestSpeed,
             magneticHeading: compassMagnetic,
             declinationDegrees: compassShift,
-            compassAccuracy: headingAccuracy ?? -1,
+            compassAccuracy: latestHeadingAccuracy ?? -1,
             lastGoodDegrees: lastTravelDegrees
         ) else { return }
-        travelDegrees = Double(aim.degrees)
+        latestTravelDegrees = Double(aim.degrees)
         if !aim.dimmed { lastTravelDegrees = aim.degrees }
     }
 
