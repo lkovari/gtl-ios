@@ -572,6 +572,216 @@ final class EngineTests: XCTestCase {
         XCTAssertEqual(track.runs[0].points.last?.latitude ?? 0, track.runs[1].points.first?.latitude ?? 1, accuracy: 0.0000001)
     }
 
+    func testCloseZoomKeepsTheStreetInsideTheView() {
+        let view = LatLonBounds(minLatitude: 47.50, minLongitude: 19.00, maxLatitude: 47.51, maxLongitude: 19.01)
+        let street = MapFeature(
+            geometry: .line([(latitude: 47.505, longitude: 19.005), (latitude: 47.506, longitude: 19.006)]),
+            category: "road",
+            name: nil,
+            tags: ["highway": "residential"]
+        )
+        let elsewhere = MapFeature(
+            geometry: .line([(latitude: 47.40, longitude: 19.005), (latitude: 47.41, longitude: 19.006)]),
+            category: "road",
+            name: nil,
+            tags: ["highway": "residential"]
+        )
+        XCTAssertTrue(WayView.intersects(street, view))
+        XCTAssertFalse(WayView.intersects(elsewhere, view))
+        var quota = WayQuota(limit: 10)
+        quota.add(elsewhere, view: view, onQueryRow: true)
+        quota.add(street, view: view, onQueryRow: true)
+        XCTAssertEqual(quota.features().count, 1)
+        XCTAssertEqual(quota.features()[0].tags["highway"], "residential")
+        let id = MapsforgeTileId(baseZoom: 14, column: 9056, row: 5728)
+        let tile = MapsforgeReader.geographicBounds(id)
+        XCTAssertEqual(MapsforgeReader.subtileMask(column: id.column, row: id.row, zoom: id.baseZoom, bounds: tile), 0xFFFF)
+        let northWest = LatLonBounds(
+            minLatitude: tile.maxLatitude - (tile.maxLatitude - tile.minLatitude) * 0.08,
+            minLongitude: tile.minLongitude,
+            maxLatitude: tile.maxLatitude,
+            maxLongitude: tile.minLongitude + (tile.maxLongitude - tile.minLongitude) * 0.08
+        )
+        let mask = MapsforgeReader.subtileMask(column: id.column, row: id.row, zoom: id.baseZoom, bounds: northWest)
+        XCTAssertNotEqual(mask & 0x8000, 0)
+        XCTAssertEqual(mask & 0x0001, 0)
+    }
+
+    func testDetailBudgetKeepsStreetWaysInsteadOfOnlyTheCoarseOnes() {
+        let counts = [10, 30, 400, 5000]
+        let plan = ZoomWayBudget.plan(counts: counts, queryRow: 3, limit: 100, favorDetail: true)
+        XCTAssertEqual(plan.reduce(0, +), 100)
+        XCTAssertGreaterThanOrEqual(plan[3], 75)
+        XCTAssertLessThan(plan[0] + plan[1] + plan[2], plan[3])
+        let overview = ZoomWayBudget.plan(counts: counts, queryRow: 3, limit: 20, favorDetail: false)
+        XCTAssertEqual(overview, [10, 10, 0, 0])
+    }
+
+    func testCenterTileStaysWhenLookaheadFillsTheByteCap() {
+        var cache = OfflineTileCache()
+        let center = cachedTile(column: 0, longitude: -0.02, bytes: 20 * 1024 * 1024)
+        var ahead: [CachedMapTile] = []
+        for index in 1...8 {
+            ahead.append(cachedTile(column: index, longitude: 0.05 * Double(index), bytes: 12 * 1024 * 1024))
+        }
+        let visible = Set([center.id] + ahead.map(\.id))
+        XCTAssertTrue(cache.update(
+            visibleIds: visible,
+            decoded: [center] + ahead,
+            travelDegrees: 90,
+            centerLatitude: 47,
+            centerLongitude: 0,
+            pinnedIds: [center.id]
+        ))
+        XCTAssertNotNil(cache.tiles[center.id])
+    }
+
+    func testCachedTileRefreshesWhenTheZoomAsksForMoreDetail() {
+        var cache = OfflineTileCache()
+        var coarse = cachedTile(column: 4, longitude: 19)
+        coarse.queryZoom = 12
+        coarse.perTile = 200
+        let id = coarse.id
+        let tile = MapsforgeReader.geographicBounds(id)
+        coarse.covered = tile
+        XCTAssertTrue(cache.update(
+            visibleIds: [id],
+            decoded: [coarse],
+            travelDegrees: nil,
+            centerLatitude: 47,
+            centerLongitude: 19
+        ))
+        let inside = LatLonBounds(
+            minLatitude: (tile.minLatitude + tile.maxLatitude) / 2,
+            minLongitude: (tile.minLongitude + tile.maxLongitude) / 2,
+            maxLatitude: tile.maxLatitude,
+            maxLongitude: tile.maxLongitude
+        )
+        XCTAssertFalse(cache.needsRefresh(id: id, queryZoom: 12, bounds: inside))
+        XCTAssertFalse(cache.needsRefresh(id: id, queryZoom: 11, bounds: inside))
+        XCTAssertTrue(cache.needsRefresh(id: id, queryZoom: 16, bounds: inside))
+        var moved = cache
+        var detail = coarse
+        detail.covered = inside
+        detail.queryZoom = 12
+        XCTAssertTrue(moved.update(
+            visibleIds: [id],
+            decoded: [detail],
+            travelDegrees: nil,
+            centerLatitude: tile.maxLatitude,
+            centerLongitude: tile.maxLongitude
+        ))
+        let southWest = LatLonBounds(
+            minLatitude: tile.minLatitude,
+            minLongitude: tile.minLongitude,
+            maxLatitude: (tile.minLatitude + tile.maxLatitude) / 2,
+            maxLongitude: (tile.minLongitude + tile.maxLongitude) / 2
+        )
+        XCTAssertTrue(moved.needsRefresh(id: id, queryZoom: 12, bounds: southWest))
+        XCTAssertFalse(moved.needsRefresh(id: id, queryZoom: 12, bounds: inside))
+    }
+
+    func testOfflineTileCacheDropsTilesBehindAndBeyondTheCap() {
+        var cache = OfflineTileCache()
+        var incoming: [CachedMapTile] = []
+        for index in 0..<OfflineTileCache.maxTiles {
+            incoming.append(cachedTile(column: index, longitude: 0.01 * Double(index + 1)))
+        }
+        for index in 0..<10 {
+            incoming.append(cachedTile(column: -index - 1, longitude: -0.01 * Double(index + 1)))
+        }
+        let visible = Set(incoming.map(\.id))
+        XCTAssertTrue(cache.update(
+            visibleIds: visible,
+            decoded: incoming,
+            travelDegrees: 90,
+            centerLatitude: 47,
+            centerLongitude: 0
+        ))
+        XCTAssertEqual(cache.tiles.count, OfflineTileCache.maxTiles)
+        XCTAssertTrue(cache.tiles.keys.allSatisfy { $0.column >= 0 })
+        let again = cache.update(
+            visibleIds: visible,
+            decoded: [],
+            travelDegrees: 90,
+            centerLatitude: 47,
+            centerLongitude: 0
+        )
+        XCTAssertFalse(again)
+        XCTAssertEqual(cache.tiles.count, OfflineTileCache.maxTiles)
+    }
+
+    func testOfflineTileCacheDropsTilesOutsideTheWindowAndOverTheByteCap() {
+        var cache = OfflineTileCache()
+        let first = cachedTile(column: 1, longitude: 0.1, bytes: 30 * 1024 * 1024)
+        let second = cachedTile(column: 2, longitude: 0.2, bytes: 30 * 1024 * 1024)
+        let third = cachedTile(column: 3, longitude: 0.3, bytes: 30 * 1024 * 1024)
+        let outside = cachedTile(column: 9, longitude: 1, bytes: 1)
+        let visible: Set<MapsforgeTileId> = [first.id, second.id, third.id]
+        XCTAssertTrue(cache.update(
+            visibleIds: visible.union([outside.id]),
+            decoded: [first, second, third, outside],
+            travelDegrees: nil,
+            centerLatitude: 47,
+            centerLongitude: 0
+        ))
+        XCTAssertEqual(cache.tiles.count, 2)
+        XCTAssertTrue(cache.tiles[first.id] != nil)
+        XCTAssertTrue(cache.tiles[second.id] != nil)
+        XCTAssertNil(cache.tiles[third.id])
+        XCTAssertTrue(cache.update(
+            visibleIds: [first.id],
+            decoded: [],
+            travelDegrees: nil,
+            centerLatitude: 47,
+            centerLongitude: 0
+        ))
+        XCTAssertEqual(cache.tiles.count, 1)
+        XCTAssertTrue(cache.tiles[first.id] != nil)
+    }
+
+    func testZoomedOutViewKeepsTilesThatCoverTheWindow() {
+        let map = LatLonBounds(minLatitude: 45.7, minLongitude: 16.1, maxLatitude: 48.6, maxLongitude: 22.9)
+        let header = MapsforgeHeader(
+            bounds: map,
+            startLatitude: 47.1,
+            startLongitude: 19.4,
+            startZoom: 14,
+            tileSize: 256,
+            poiTags: [],
+            wayTags: [],
+            subFiles: [
+                MapsforgeSubFile(baseZoom: 5, minZoom: 0, maxZoom: 7, startAddress: 0, indexStartAddress: 0, subFileSize: 1),
+                MapsforgeSubFile(baseZoom: 10, minZoom: 8, maxZoom: 11, startAddress: 0, indexStartAddress: 0, subFileSize: 1),
+                MapsforgeSubFile(baseZoom: 14, minZoom: 12, maxZoom: 21, startAddress: 0, indexStartAddress: 0, subFileSize: 1)
+            ],
+            debug: false,
+            fileVersion: 5
+        )
+        let regional = LatLonBounds(minLatitude: 46.0, minLongitude: 18.0, maxLatitude: 48.0, maxLongitude: 21.0)
+        XCTAssertEqual(MapsforgeReader.subfileBaseZoom(header: header, bounds: regional, zoom: 9), 5)
+        let county = LatLonBounds(minLatitude: 46.9, minLongitude: 18.6, maxLatitude: 48.0, maxLongitude: 19.8)
+        XCTAssertEqual(MapsforgeReader.subfileBaseZoom(header: header, bounds: county, zoom: 9), 10)
+        let country = LatLonBounds(minLatitude: 45.8, minLongitude: 16.2, maxLatitude: 48.5, maxLongitude: 22.8)
+        XCTAssertEqual(MapsforgeReader.subfileBaseZoom(header: header, bounds: country, zoom: 6), 5)
+        XCTAssertEqual(MapsforgeReader.subfileBaseZoom(header: header, bounds: country, zoom: 11), 5)
+        let street = LatLonBounds(minLatitude: 47.08, minLongitude: 19.38, maxLatitude: 47.12, maxLongitude: 19.42)
+        XCTAssertEqual(MapsforgeReader.subfileBaseZoom(header: header, bounds: street, zoom: 14), 14)
+    }
+
+    func testZoomedOutMapKeepsOnlyTheNearestTiles() {
+        XCTAssertEqual(MapsforgeReader.tilesKeptForZoom(200), OfflineTileCache.maxTiles)
+        XCTAssertEqual(MapsforgeReader.tilesKeptForZoom(3), 3)
+        XCTAssertEqual(MapsforgeReader.tilesKeptForZoom(0), 0)
+    }
+
+    func testPlaceIndexStaysIdleWhileLoggingOrTheMapIsHidden() {
+        XCTAssertFalse(PlaceIndexPolicy.shouldStart(logging: true, mapVisible: true))
+        XCTAssertFalse(PlaceIndexPolicy.shouldStart(logging: false, mapVisible: false))
+        XCTAssertFalse(PlaceIndexPolicy.shouldStart(logging: true, mapVisible: false))
+        XCTAssertTrue(PlaceIndexPolicy.shouldStart(logging: false, mapVisible: true))
+    }
+
     func testCoalesceKeepsHostRunId() {
         let point = GeoPoint(latitude: 47, longitude: 19)
         var runs: [SpeedRun] = []
@@ -582,6 +792,16 @@ final class EngineTests: XCTestCase {
         XCTAssertEqual(merged.count, 300)
         XCTAssertFalse(merged.contains { $0.id == 1 })
         XCTAssertTrue(merged.contains { $0.id == 2 })
+    }
+
+    private func cachedTile(column: Int, longitude: Double, bytes: Int = 64) -> CachedMapTile {
+        CachedMapTile(
+            id: MapsforgeTileId(baseZoom: 14, column: column, row: 0),
+            features: [],
+            bytes: bytes,
+            latitude: 47,
+            longitude: longitude
+        )
     }
 
     private func fix(t: Int64, lat: Double, lon: Double, accuracy: Float, sats: Int) -> TrackFix {

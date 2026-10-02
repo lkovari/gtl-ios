@@ -252,6 +252,7 @@ final class SqliteHandle: @unchecked Sendable {
 actor PlaceIndex {
     private let handle: SqliteHandle
     private var db: OpaquePointer? { handle.raw }
+    private var replacing = false
 
     init() throws {
         let base = try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
@@ -275,36 +276,59 @@ actor PlaceIndex {
     }
 
     func replaceAll(path: String, bytes: Int64, modified: Int64, rows: [IndexedPlace]) throws {
-        try exec("BEGIN IMMEDIATE;")
+        try beginReplace()
         do {
-            try exec("DELETE FROM places;")
-            try exec("DELETE FROM index_state;")
-            for row in rows.prefix(MapSearch.maxIndexedPlaces) {
-                var statement: OpaquePointer?
-                guard sqlite3_prepare_v2(db, "INSERT INTO places (folded, name, kind, lat, lon) VALUES (?, ?, ?, ?, ?);", -1, &statement, nil) == SQLITE_OK else {
-                    continue
-                }
-                sqlite3_bind_text(statement, 1, row.folded, -1, unsafeBitCast(-1, to: sqlite3_destructor_type.self))
-                sqlite3_bind_text(statement, 2, row.name, -1, unsafeBitCast(-1, to: sqlite3_destructor_type.self))
-                sqlite3_bind_text(statement, 3, row.kind, -1, unsafeBitCast(-1, to: sqlite3_destructor_type.self))
-                sqlite3_bind_double(statement, 4, row.latitude)
-                sqlite3_bind_double(statement, 5, row.longitude)
-                sqlite3_step(statement)
-                sqlite3_finalize(statement)
-            }
-            var state: OpaquePointer?
-            if sqlite3_prepare_v2(db, "INSERT INTO index_state (path, bytes, modified, done) VALUES (?, ?, ?, 1);", -1, &state, nil) == SQLITE_OK, let state {
-                sqlite3_bind_text(state, 1, path, -1, unsafeBitCast(-1, to: sqlite3_destructor_type.self))
-                sqlite3_bind_int64(state, 2, bytes)
-                sqlite3_bind_int64(state, 3, modified)
-                sqlite3_step(state)
-                sqlite3_finalize(state)
-            }
-            try exec("COMMIT;")
+            try insertBatch(Array(rows.prefix(MapSearch.maxIndexedPlaces)))
+            try finish(path: path, bytes: bytes, modified: modified)
         } catch {
-            try? exec("ROLLBACK;")
+            try? abort()
             throw error
         }
+    }
+
+    func beginReplace() throws {
+        if replacing { try? abort() }
+        try exec("BEGIN IMMEDIATE;")
+        try exec("DELETE FROM places;")
+        try exec("DELETE FROM index_state;")
+        replacing = true
+    }
+
+    func insertBatch(_ rows: [IndexedPlace]) throws {
+        guard replacing else { return }
+        for row in rows {
+            var statement: OpaquePointer?
+            guard sqlite3_prepare_v2(db, "INSERT INTO places (folded, name, kind, lat, lon) VALUES (?, ?, ?, ?, ?);", -1, &statement, nil) == SQLITE_OK else {
+                continue
+            }
+            sqlite3_bind_text(statement, 1, row.folded, -1, unsafeBitCast(-1, to: sqlite3_destructor_type.self))
+            sqlite3_bind_text(statement, 2, row.name, -1, unsafeBitCast(-1, to: sqlite3_destructor_type.self))
+            sqlite3_bind_text(statement, 3, row.kind, -1, unsafeBitCast(-1, to: sqlite3_destructor_type.self))
+            sqlite3_bind_double(statement, 4, row.latitude)
+            sqlite3_bind_double(statement, 5, row.longitude)
+            sqlite3_step(statement)
+            sqlite3_finalize(statement)
+        }
+    }
+
+    func finish(path: String, bytes: Int64, modified: Int64) throws {
+        guard replacing else { return }
+        var state: OpaquePointer?
+        if sqlite3_prepare_v2(db, "INSERT INTO index_state (path, bytes, modified, done) VALUES (?, ?, ?, 1);", -1, &state, nil) == SQLITE_OK, let state {
+            sqlite3_bind_text(state, 1, path, -1, unsafeBitCast(-1, to: sqlite3_destructor_type.self))
+            sqlite3_bind_int64(state, 2, bytes)
+            sqlite3_bind_int64(state, 3, modified)
+            sqlite3_step(state)
+            sqlite3_finalize(state)
+        }
+        try exec("COMMIT;")
+        replacing = false
+    }
+
+    func abort() throws {
+        guard replacing else { return }
+        replacing = false
+        try exec("ROLLBACK;")
     }
 
     func search(match: String, limit: Int) throws -> [MapSearchCandidate] {

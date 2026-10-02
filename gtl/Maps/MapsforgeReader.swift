@@ -31,6 +31,7 @@ struct MapsforgeHeader {
     var subFiles: [MapsforgeSubFile]
     var debug: Bool
     var fileVersion: Int
+    var hiking = false
 }
 
 struct MapsforgeSubFile {
@@ -42,95 +43,338 @@ struct MapsforgeSubFile {
     var subFileSize: Int64
 }
 
-private final class MapFileCache: @unchecked Sendable {
-    private var key = ""
-    private var data: Data?
+final class MapFileReader: @unchecked Sendable {
+    let url: URL
+    let header: MapsforgeHeader
+    fileprivate let fileSize: Int64
+    private let handle: FileHandle
     private let lock = NSLock()
+    private var closed = false
 
-    func data(at url: URL) -> Data? {
-        let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
-        let next = "\(url.path)#\(size)"
+    static func open(_ url: URL) -> MapFileReader? {
+        guard OsmMapFile.isReadable(url) else { return nil }
+        return MapFileReader(url: url)
+    }
+
+    func close() {
         lock.lock()
         defer { lock.unlock() }
-        if key == next, let data { return data }
-        guard let loaded = try? Data(contentsOf: url, options: [.mappedIfSafe]) else { return nil }
-        key = next
-        data = loaded
-        return loaded
+        guard !closed else { return }
+        closed = true
+        try? handle.close()
+    }
+
+    func placeScan(limit: Int) -> PlaceScan {
+        PlaceScan(reader: self, limit: limit)
+    }
+
+    func visibleTiles(bounds: LatLonBounds, focus: LatLonBounds, zoom: Int, featureLimit: Int, poiLimit: Int) -> [MapsforgeTileRequest] {
+        MapsforgeReader.tileRequests(header: header, bounds: bounds, focus: focus, zoom: zoom, featureLimit: featureLimit, poiLimit: poiLimit)
+    }
+
+    func decode(_ requests: [MapsforgeTileRequest], isCancelled: @escaping @Sendable () -> Bool) -> [CachedMapTile] {
+        var tiles: [CachedMapTile] = []
+        for request in requests {
+            if isCancelled() { break }
+            guard let features = MapsforgeReader.readTile(
+                reader: self,
+                header: header,
+                sub: request.sub,
+                grid: request.grid,
+                tile: request.tile,
+                queryZoom: request.queryZoom,
+                perTile: request.perTile,
+                poisPerTile: request.poisPerTile,
+                view: request.filterToView ? request.view : nil,
+                isCancelled: isCancelled
+            ), !isCancelled() else { continue }
+            tiles.append(CachedMapTile(
+                id: request.id,
+                features: features,
+                bytes: OfflineTileCache.estimatedBytes(features),
+                latitude: request.latitude,
+                longitude: request.longitude,
+                queryZoom: request.queryZoom,
+                perTile: request.perTile,
+                covered: request.view
+            ))
+        }
+        return tiles
+    }
+
+    fileprivate func read(offset: Int64, length: Int) -> Data? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !closed, offset >= 0, length > 0, offset <= fileSize else { return nil }
+        let available = fileSize - offset
+        guard available > 0 else { return nil }
+        let count = min(Int64(length), available)
+        guard count == Int64(length) else { return nil }
+        do {
+            try handle.seek(toOffset: UInt64(offset))
+            return try handle.read(upToCount: length)
+        } catch {
+            return nil
+        }
+    }
+
+    private init?(url: URL) {
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
+        let size = Int64((try? handle.seekToEnd()) ?? 0)
+        guard size >= 24,
+              let prefix = Self.read(handle, offset: 0, length: 24, fileSize: size),
+              let headerBytes = Self.headerLength(prefix),
+              let blob = Self.read(handle, offset: 0, length: Int(min(size, headerBytes)), fileSize: size),
+              let header = MapsforgeReader.parseHeader(blob) else {
+            try? handle.close()
+            return nil
+        }
+        self.url = url
+        self.header = header
+        self.fileSize = size
+        self.handle = handle
+    }
+
+    private static func headerLength(_ prefix: Data) -> Int64? {
+        let cursor = ByteCursor(prefix)
+        _ = cursor.readASCII(20)
+        let headerSize = Int64(cursor.readUInt32())
+        guard headerSize > 4, headerSize < 16_000_000 else { return nil }
+        return 24 + headerSize
+    }
+
+    private static func read(_ handle: FileHandle, offset: Int64, length: Int, fileSize: Int64) -> Data? {
+        guard offset >= 0, length > 0, offset + Int64(length) <= fileSize else { return nil }
+        do {
+            try handle.seek(toOffset: UInt64(offset))
+            let data = try handle.read(upToCount: length)
+            guard data?.count == length else { return nil }
+            return data
+        } catch {
+            return nil
+        }
+    }
+}
+
+struct MapsforgeTileRequest: Sendable {
+    var id: MapsforgeTileId
+    var latitude: Double
+    var longitude: Double
+    fileprivate var tile: MapsforgeReader.TileRef
+    fileprivate var sub: MapsforgeSubFile
+    fileprivate var grid: MapsforgeReader.TileGrid
+    var queryZoom: Int
+    var perTile: Int
+    fileprivate var poisPerTile: Int
+    var view: LatLonBounds
+    var filterToView: Bool
+}
+
+final class PlaceScan: @unchecked Sendable {
+    fileprivate let reader: MapFileReader
+    fileprivate let limit: Int
+    fileprivate var seen = Set<String>()
+    fileprivate var produced = 0
+    fileprivate var subIndex = 0
+    fileprivate var row = 0
+    fileprivate var col = 0
+    fileprivate let subs: [MapsforgeSubFile]
+
+    fileprivate init(reader: MapFileReader, limit: Int) {
+        self.reader = reader
+        self.limit = limit
+        self.subs = reader.header.subFiles.sorted { $0.baseZoom < $1.baseZoom }
+    }
+
+    func nextBatch(_ count: Int, isCancelled: @escaping @Sendable () -> Bool = { false }) -> [IndexedPlace] {
+        MapsforgeReader.nextPlaceBatch(self, count: count, isCancelled: isCancelled)
+    }
+}
+
+enum ZoomWayBudget {
+    static func plan(counts: [Int], queryRow: Int, limit: Int, favorDetail: Bool) -> [Int] {
+        var plan = Array(repeating: 0, count: counts.count)
+        guard limit > 0, queryRow >= 0, queryRow < counts.count else { return plan }
+        if !favorDetail {
+            var left = limit
+            for row in 0...queryRow {
+                let take = min(max(counts[row], 0), left)
+                plan[row] = take
+                left -= take
+                if left == 0 { break }
+            }
+            return plan
+        }
+        var left = limit
+        let highShare = max(1, limit * 3 / 4)
+        let high = min(max(counts[queryRow], 0), highShare)
+        plan[queryRow] = high
+        left -= high
+        if queryRow > 0 {
+            for row in stride(from: queryRow - 1, through: 0, by: -1) {
+                let take = min(max(counts[row], 0), left)
+                plan[row] = take
+                left -= take
+                if left == 0 { break }
+            }
+        }
+        let room = max(counts[queryRow] - plan[queryRow], 0)
+        plan[queryRow] += min(left, room)
+        return plan
+    }
+
+    static func filled(_ kept: [Int], _ plan: [Int], _ queryRow: Int) -> Bool {
+        guard queryRow >= 0 else { return true }
+        let last = min(queryRow, plan.count - 1)
+        guard last >= 0 else { return true }
+        for row in 0...last {
+            if row < kept.count, kept[row] < plan[row] { return false }
+        }
+        return true
+    }
+}
+
+enum WayView {
+    static func expanded(_ bounds: LatLonBounds, fraction: Double) -> LatLonBounds {
+        let lat = max(bounds.maxLatitude - bounds.minLatitude, 0.0003) * fraction
+        let lon = max(bounds.maxLongitude - bounds.minLongitude, 0.0003) * fraction
+        return LatLonBounds(
+            minLatitude: bounds.minLatitude - lat,
+            minLongitude: bounds.minLongitude - lon,
+            maxLatitude: bounds.maxLatitude + lat,
+            maxLongitude: bounds.maxLongitude + lon
+        )
+    }
+
+    static func contains(_ outer: LatLonBounds, _ inner: LatLonBounds) -> Bool {
+        inner.minLatitude >= outer.minLatitude - 1e-7
+            && inner.maxLatitude <= outer.maxLatitude + 1e-7
+            && inner.minLongitude >= outer.minLongitude - 1e-7
+            && inner.maxLongitude <= outer.maxLongitude + 1e-7
+    }
+
+    static func intersection(_ lhs: LatLonBounds, _ rhs: LatLonBounds) -> LatLonBounds? {
+        let minLatitude = max(lhs.minLatitude, rhs.minLatitude)
+        let minLongitude = max(lhs.minLongitude, rhs.minLongitude)
+        let maxLatitude = min(lhs.maxLatitude, rhs.maxLatitude)
+        let maxLongitude = min(lhs.maxLongitude, rhs.maxLongitude)
+        guard minLatitude < maxLatitude, minLongitude < maxLongitude else { return nil }
+        return LatLonBounds(
+            minLatitude: minLatitude,
+            minLongitude: minLongitude,
+            maxLatitude: maxLatitude,
+            maxLongitude: maxLongitude
+        )
+    }
+
+    static func box(_ feature: MapFeature) -> LatLonBounds? {
+        switch feature.geometry {
+        case .point(let latitude, let longitude):
+            return LatLonBounds(minLatitude: latitude, minLongitude: longitude, maxLatitude: latitude, maxLongitude: longitude)
+        case .line(let line):
+            guard let first = line.first else { return nil }
+            var minLat = first.latitude
+            var maxLat = first.latitude
+            var minLon = first.longitude
+            var maxLon = first.longitude
+            for node in line {
+                minLat = min(minLat, node.latitude)
+                maxLat = max(maxLat, node.latitude)
+                minLon = min(minLon, node.longitude)
+                maxLon = max(maxLon, node.longitude)
+            }
+            return LatLonBounds(minLatitude: minLat, minLongitude: minLon, maxLatitude: maxLat, maxLongitude: maxLon)
+        }
+    }
+
+    static func overlaps(_ lhs: LatLonBounds, _ rhs: LatLonBounds) -> Bool {
+        lhs.maxLatitude >= rhs.minLatitude && lhs.minLatitude <= rhs.maxLatitude
+            && lhs.maxLongitude >= rhs.minLongitude && lhs.minLongitude <= rhs.maxLongitude
+    }
+
+    static func intersects(_ feature: MapFeature, _ bounds: LatLonBounds) -> Bool {
+        guard let box = box(feature) else { return false }
+        return overlaps(box, bounds)
+    }
+
+    static func rank(_ feature: MapFeature) -> Int {
+        if feature.tags["highway"] != nil || feature.tags["railway"] != nil || feature.tags["waterway"] != nil {
+            return 0
+        }
+        if feature.category == "water" || feature.category == "land" || feature.category == OsmRenderOptions.catParks {
+            return 1
+        }
+        if feature.tags["building"] != nil { return 3 }
+        return 2
+    }
+}
+
+struct WayQuota {
+    private(set) var roads: [MapFeature] = []
+    private(set) var land: [MapFeature] = []
+    private(set) var rest: [MapFeature] = []
+    let roadCap: Int
+    let landCap: Int
+    let restCap: Int
+    let queryRoadFloor: Int
+
+    init(limit: Int) {
+        let total = max(limit, 1)
+        roadCap = max(1, total * 3 / 5)
+        landCap = max(1, total / 5)
+        restCap = max(0, total - roadCap - landCap)
+        queryRoadFloor = 0
+    }
+
+    var filled: Bool {
+        roads.count >= roadCap && land.count >= landCap && rest.count >= restCap
+    }
+
+    func saturated(onQueryRow: Bool) -> Bool {
+        if onQueryRow { return filled }
+        return roads.count >= max(0, roadCap - queryRoadFloor)
+            && land.count >= landCap
+            && rest.count >= restCap
+    }
+
+    mutating func add(_ feature: MapFeature, view: LatLonBounds, onQueryRow: Bool) {
+        guard WayView.intersects(feature, view) else { return }
+        switch WayView.rank(feature) {
+        case 0:
+            let cap = onQueryRow ? roadCap : max(0, roadCap - queryRoadFloor)
+            guard roads.count < cap else { return }
+            roads.append(feature)
+        case 1:
+            guard land.count < landCap else { return }
+            land.append(feature)
+        default:
+            guard rest.count < restCap else { return }
+            rest.append(feature)
+        }
+    }
+
+    func features() -> [MapFeature] {
+        roads + land + rest
     }
 }
 
 enum MapsforgeReader {
-    private static let mapFileCache = MapFileCache()
     static func header(of url: URL) -> MapsforgeHeader? {
-        guard OsmMapFile.isReadable(url), let data = mapFileCache.data(at: url) else {
-            return nil
-        }
-        return parseHeader(data)
+        guard let reader = MapFileReader.open(url) else { return nil }
+        defer { reader.close() }
+        return reader.header
     }
 
-    static func namedPlaces(url: URL, limit: Int, isCancelled: () -> Bool = { false }) -> [IndexedPlace] {
-        guard let data = mapFileCache.data(at: url), let header = parseHeader(data) else {
-            return []
-        }
+    static func namedPlaces(url: URL, limit: Int, isCancelled: @escaping @Sendable () -> Bool = { false }) -> [IndexedPlace] {
+        guard let reader = MapFileReader.open(url) else { return [] }
+        defer { reader.close() }
+        let scan = reader.placeScan(limit: limit)
         var rows: [IndexedPlace] = []
-        var seen = Set<String>()
-        let subs = header.subFiles.sorted { $0.baseZoom < $1.baseZoom }
-        let cursor = ByteCursor(data)
-        for sub in subs {
-            if rows.count >= limit || isCancelled() { break }
-            let grid = tileGrid(header.bounds, sub.baseZoom)
-            let queryZoom = sub.maxZoom
-            for row in 0..<grid.height {
-                if rows.count >= limit || isCancelled() { break }
-                for col in 0..<grid.width {
-                    if rows.count >= limit || isCancelled() { break }
-                    let block = row * grid.width + col
-                    let entryPos = sub.indexStartAddress + Int64(block * 5)
-                    guard entryPos >= 0, entryPos + 5 <= Int64(data.count) else { continue }
-                    cursor.offset = Int(entryPos)
-                    let first = readFive(cursor)
-                    let offset = first & 0x7fffffffff
-                    let next: Int64
-                    if block + 1 == grid.width * grid.height {
-                        next = sub.subFileSize
-                    } else {
-                        guard entryPos + 10 <= Int64(data.count) else { continue }
-                        next = readFive(cursor) & 0x7fffffffff
-                    }
-                    if offset <= 0 || offset >= next || offset > sub.subFileSize { continue }
-                    let tileStart = sub.startAddress + offset
-                    let tileEnd = min(sub.startAddress + next, sub.startAddress + sub.subFileSize)
-                    guard tileStart < tileEnd, tileEnd <= Int64(data.count) else { continue }
-                    cursor.offset = Int(tileStart)
-                    if header.debug { cursor.offset += 32 }
-                    let origin = tileOrigin(x: grid.left + col, y: grid.top + row, zoom: sub.baseZoom)
-                    guard let decoded = decodeTile(
-                        cursor,
-                        end: Int(tileEnd),
-                        header: header,
-                        sub: sub,
-                        queryZoom: queryZoom,
-                        originLat: origin.lat,
-                        originLon: origin.lon,
-                        limit: 80_000,
-                        poiLimit: 80_000
-                    ) else { continue }
-                    for feature in decoded {
-                        guard rows.count < limit else { break }
-                        guard let point = searchAnchor(feature), let record = MapSearch.record(tags: feature.tags) else { continue }
-                        let key = "\(record.kind.rawValue)|\(MapSearch.fold(record.displayName))|\(Int((point.0 / 0.0004).rounded()))|\(Int((point.1 / 0.0004).rounded()))"
-                        guard seen.insert(key).inserted else { continue }
-                        rows.append(IndexedPlace(
-                            name: record.displayName,
-                            folded: record.foldedAliases.joined(separator: " "),
-                            kind: record.kind.rawValue,
-                            latitude: point.0,
-                            longitude: point.1
-                        ))
-                    }
-                }
-            }
+        while rows.count < limit {
+            if isCancelled() { break }
+            let batch = scan.nextBatch(min(400, limit - rows.count), isCancelled: isCancelled)
+            if batch.isEmpty { break }
+            rows.append(contentsOf: batch)
         }
         return rows
     }
@@ -183,59 +427,451 @@ enum MapsforgeReader {
         poiLimit: Int = 28,
         isCancelled: @escaping @Sendable () -> Bool = { false }
     ) -> [MapFeature] {
-        guard let data = mapFileCache.data(at: url), let header = parseHeader(data) else {
-            return []
-        }
+        guard let reader = MapFileReader.open(url) else { return [] }
+        defer { reader.close() }
+        let header = reader.header
         let queryZoom = min(max(zoom, 0), 22)
         guard let sub = chooseSubfile(header, bounds: bounds, queryZoom: queryZoom) else { return [] }
         let grid = tileGrid(header.bounds, sub.baseZoom)
         let query = queryTiles(bounds, zoom: sub.baseZoom, grid: grid)
         guard !query.isEmpty else { return [] }
-        let overview = queryZoom <= 11 || query.count > 36
-        let cap = overview ? min(limit, 2400) : limit
-        let share = cap / max(query.count, 1)
-        let floor = query.count <= 12 ? min(cap, overview ? 160 : 400) : (overview ? 20 : 70)
-        let perTile = min(overview ? 180 : 700, max(share, floor))
-        let poisPerTile = overview ? min(poiLimit, 4) : poiLimit
+        let budgets = tileBudgets(queryZoom: queryZoom, sub: sub, queryCount: query.count, limit: limit, poiLimit: poiLimit)
         var features: [MapFeature] = []
-        let cursor = ByteCursor(data)
         for tile in query {
-            if features.count >= cap || isCancelled() { break }
-            let block = tile.row * grid.width + tile.col
-            let entryPos = sub.indexStartAddress + Int64(block * 5)
-            guard entryPos >= 0, entryPos + 5 <= Int64(data.count) else { continue }
-            cursor.offset = Int(entryPos)
-            let first = readFive(cursor)
-            let offset = first & 0x7fffffffff
-            let next: Int64
-            if block + 1 == grid.width * grid.height {
-                next = sub.subFileSize
-            } else {
-                guard entryPos + 10 <= Int64(data.count) else { continue }
-                next = readFive(cursor) & 0x7fffffffff
-            }
-            if offset <= 0 || offset >= next || offset > sub.subFileSize { continue }
-            let tileStart = sub.startAddress + offset
-            let tileEnd = min(sub.startAddress + next, sub.startAddress + sub.subFileSize)
-            guard tileStart < tileEnd, tileEnd <= Int64(data.count) else { continue }
-            cursor.offset = Int(tileStart)
-            if header.debug { cursor.offset += 32 }
-            let origin = tileOrigin(x: grid.left + tile.col, y: grid.top + tile.row, zoom: sub.baseZoom)
-            if let decoded = decodeTile(
-                cursor,
-                end: Int(tileEnd),
+            if features.count >= budgets.cap || isCancelled() { break }
+            if let decoded = readTile(
+                reader: reader,
                 header: header,
                 sub: sub,
+                grid: grid,
+                tile: tile,
                 queryZoom: queryZoom,
-                originLat: origin.lat,
-                originLon: origin.lon,
-                limit: perTile,
-                poiLimit: poisPerTile
+                perTile: budgets.perTile,
+                poisPerTile: budgets.poisPerTile,
+                view: bounds
             ) {
                 features.append(contentsOf: decoded)
             }
         }
         return features
+    }
+
+    fileprivate static func tileRequests(
+        header: MapsforgeHeader,
+        bounds: LatLonBounds,
+        focus: LatLonBounds,
+        zoom: Int,
+        featureLimit: Int,
+        poiLimit: Int
+    ) -> [MapsforgeTileRequest] {
+        let queryZoom = min(max(zoom, 0), 22)
+        guard let sub = chooseSubfile(header, bounds: bounds, queryZoom: queryZoom) else { return [] }
+        let grid = tileGrid(header.bounds, sub.baseZoom)
+        let query = Array(queryTiles(bounds, zoom: sub.baseZoom, grid: grid).prefix(tilesKeptForZoom(Int.max)))
+        guard !query.isEmpty else { return [] }
+        let budgets = tileBudgets(queryZoom: queryZoom, sub: sub, queryCount: query.count, limit: featureLimit, poiLimit: poiLimit)
+        let focusView = WayView.expanded(focus, fraction: 0.45)
+        return query.map { tile in
+            let column = grid.left + tile.col
+            let row = grid.top + tile.row
+            let center = tileCenter(column: column, row: row, zoom: sub.baseZoom)
+            let id = MapsforgeTileId(baseZoom: sub.baseZoom, column: column, row: row)
+            return MapsforgeTileRequest(
+                id: id,
+                latitude: center.lat,
+                longitude: center.lon,
+                tile: tile,
+                sub: sub,
+                grid: grid,
+                queryZoom: queryZoom,
+                perTile: budgets.perTile,
+                poisPerTile: budgets.poisPerTile,
+                view: focusView,
+                filterToView: true
+            )
+        }
+    }
+
+    fileprivate static func nextPlaceBatch(
+        _ scan: PlaceScan,
+        count: Int,
+        isCancelled: () -> Bool
+    ) -> [IndexedPlace] {
+        var rows: [IndexedPlace] = []
+        let header = scan.reader.header
+        while rows.count < count, scan.produced < scan.limit, !isCancelled() {
+            guard scan.subIndex < scan.subs.count else { break }
+            let sub = scan.subs[scan.subIndex]
+            let grid = tileGrid(header.bounds, sub.baseZoom)
+            if scan.row >= grid.height {
+                scan.subIndex += 1
+                scan.row = 0
+                scan.col = 0
+                continue
+            }
+            if scan.col >= grid.width {
+                scan.row += 1
+                scan.col = 0
+                continue
+            }
+            let row = scan.row
+            let col = scan.col
+            scan.col += 1
+            let tile = TileRef(row: row, col: col)
+            guard let decoded = readTile(
+                reader: scan.reader,
+                header: header,
+                sub: sub,
+                grid: grid,
+                tile: tile,
+                queryZoom: sub.maxZoom,
+                perTile: 80_000,
+                poisPerTile: 80_000,
+                view: nil,
+                isCancelled: isCancelled
+            ), !isCancelled() else { continue }
+            for feature in decoded {
+                guard scan.produced < scan.limit, rows.count < count else { break }
+                guard let place = indexedPlace(from: feature), scan.seen.insert(place.key).inserted else { continue }
+                scan.produced += 1
+                rows.append(place.row)
+            }
+        }
+        return rows
+    }
+
+    fileprivate static func readTile(
+        reader: MapFileReader,
+        header: MapsforgeHeader,
+        sub: MapsforgeSubFile,
+        grid: TileGrid,
+        tile: TileRef,
+        queryZoom: Int,
+        perTile: Int,
+        poisPerTile: Int,
+        view: LatLonBounds?,
+        isCancelled: () -> Bool = { false }
+    ) -> [MapFeature]? {
+        let block = tile.row * grid.width + tile.col
+        let entryPos = sub.indexStartAddress + Int64(block * 5)
+        let last = block + 1 == grid.width * grid.height
+        let indexLength = last ? 5 : 10
+        guard entryPos >= 0, let index = reader.read(offset: entryPos, length: indexLength) else { return nil }
+        let cursor = ByteCursor(index)
+        let offset = readFive(cursor) & 0x7fffffffff
+        let next: Int64
+        if last {
+            next = sub.subFileSize
+        } else {
+            next = readFive(cursor) & 0x7fffffffff
+        }
+        if offset <= 0 || offset >= next || offset > sub.subFileSize { return [] }
+        let tileStart = sub.startAddress + offset
+        let tileEnd = min(sub.startAddress + next, sub.startAddress + sub.subFileSize)
+        guard tileStart < tileEnd, tileEnd <= reader.fileSize else { return nil }
+        let length = Int(tileEnd - tileStart)
+        let column = grid.left + tile.col
+        let row = grid.top + tile.row
+        let origin = tileOrigin(x: column, y: row, zoom: sub.baseZoom)
+        let focus = view
+        let mask = focus.map { subtileMask(column: column, row: row, zoom: sub.baseZoom, bounds: $0) } ?? 0xFFFF
+        if length > maxTileReadBytes {
+            return decodeLargeTile(
+                reader: reader,
+                header: header,
+                sub: sub,
+                tileStart: tileStart,
+                length: length,
+                queryZoom: queryZoom,
+                originLat: origin.lat,
+                originLon: origin.lon,
+                limit: perTile,
+                view: focus,
+                mask: mask
+            )
+        }
+        guard let bytes = reader.read(offset: tileStart, length: length) else { return nil }
+        let tileCursor = ByteCursor(bytes)
+        if header.debug { tileCursor.offset = min(32, bytes.count) }
+        return decodeTile(
+            tileCursor,
+            end: bytes.count,
+            header: header,
+            sub: sub,
+            queryZoom: queryZoom,
+            originLat: origin.lat,
+            originLon: origin.lon,
+            limit: perTile,
+            poiLimit: poisPerTile,
+            view: focus,
+            mask: mask,
+            isCancelled: isCancelled
+        )
+    }
+
+    static func tilesKeptForZoom(_ count: Int) -> Int {
+        min(max(count, 0), OfflineTileCache.maxTiles)
+    }
+
+    private static let maxTileReadBytes = 4_000_000
+
+    private static func decodeLargeTile(
+        reader: MapFileReader,
+        header: MapsforgeHeader,
+        sub: MapsforgeSubFile,
+        tileStart: Int64,
+        length: Int,
+        queryZoom: Int,
+        originLat: Double,
+        originLon: Double,
+        limit: Int,
+        view: LatLonBounds?,
+        mask: UInt16
+    ) -> [MapFeature]? {
+        let probeCount = min(length, 65_536)
+        guard let probe = reader.read(offset: tileStart, length: probeCount) else { return nil }
+        guard let index = zoomIndex(in: probe, debug: header.debug, sub: sub), index.firstWay >= 0, index.firstWay < length else { return nil }
+        let rows = sub.maxZoom - sub.minZoom + 1
+        let queryRow = min(max(rows - 1, 0), max(0, queryZoom - sub.minZoom))
+        if queryZoom > 11 {
+            if let view {
+                return streamVisibleWays(
+                    reader: reader,
+                    start: tileStart + Int64(index.firstWay),
+                    end: tileStart + Int64(length),
+                    header: header,
+                    sub: sub,
+                    originLat: originLat,
+                    originLon: originLon,
+                    wayCounts: index.wayCounts,
+                    queryRow: queryRow,
+                    limit: limit,
+                    view: view,
+                    mask: mask
+                )
+            }
+            return streamPlannedWays(
+                reader: reader,
+                start: tileStart + Int64(index.firstWay),
+                end: tileStart + Int64(length),
+                header: header,
+                sub: sub,
+                originLat: originLat,
+                originLon: originLon,
+                wayCounts: index.wayCounts,
+                queryRow: queryRow,
+                limit: limit
+            )
+        }
+        let wayLength = min(maxTileReadBytes, length - index.firstWay)
+        guard wayLength > 0, let wayBytes = reader.read(offset: tileStart + Int64(index.firstWay), length: wayLength) else { return nil }
+        let wayCount = max(limit, 1) * max(queryRow + 1, 1) * 8
+        let cursor = ByteCursor(wayBytes)
+        return decodeWays(
+            cursor,
+            end: wayBytes.count,
+            header: header,
+            sub: sub,
+            originLat: originLat,
+            originLon: originLon,
+            wayCount: wayCount,
+            limit: limit,
+            spread: true
+        )
+    }
+
+    private struct TileZoomIndex {
+        var wayCounts: [Int]
+        var firstWay: Int
+    }
+
+    private static func zoomIndex(in data: Data, debug: Bool, sub: MapsforgeSubFile) -> TileZoomIndex? {
+        let cursor = ByteCursor(data)
+        if debug { cursor.offset = min(32, data.count) }
+        let rows = sub.maxZoom - sub.minZoom + 1
+        guard rows > 0, rows < 30 else { return nil }
+        var wayCounts: [Int] = []
+        for _ in 0..<rows {
+            _ = cursor.readVBEU()
+            wayCounts.append(cursor.readVBEU())
+            if cursor.offset > data.count { return nil }
+        }
+        let afterHeader = cursor.offset
+        let firstWay = afterHeader + cursor.readVBEU()
+        guard cursor.offset <= data.count, firstWay >= afterHeader else { return nil }
+        return TileZoomIndex(wayCounts: wayCounts, firstWay: firstWay)
+    }
+
+    private static func streamPlannedWays(
+        reader: MapFileReader,
+        start: Int64,
+        end: Int64,
+        header: MapsforgeHeader,
+        sub: MapsforgeSubFile,
+        originLat: Double,
+        originLon: Double,
+        wayCounts: [Int],
+        queryRow: Int,
+        limit: Int
+    ) -> [MapFeature] {
+        let plan = ZoomWayBudget.plan(counts: wayCounts, queryRow: queryRow, limit: limit, favorDetail: true)
+        var features: [MapFeature] = []
+        var window = WayWindow(reader: reader, end: end)
+        var offset = start
+        var row = 0
+        var left = wayCounts.isEmpty ? 0 : wayCounts[0]
+        var kept = Array(repeating: 0, count: wayCounts.count)
+        while offset < end, row <= queryRow, !ZoomWayBudget.filled(kept, plan, queryRow) {
+            if left == 0 {
+                row += 1
+                guard row <= queryRow, row < wayCounts.count else { break }
+                left = wayCounts[row]
+                continue
+            }
+            if header.debug { offset += 32 }
+            guard let head = window.slice(at: offset, count: Int(min(10, end - offset))) else { break }
+            let headCursor = ByteCursor(head)
+            let size = headCursor.readVBEU()
+            let headerLen = headCursor.offset
+            let recordLen = headerLen + size
+            let next = offset + Int64(recordLen)
+            guard size >= 0, recordLen >= headerLen, next <= end else { break }
+            if row < plan.count, kept[row] < plan[row], let record = window.slice(at: offset, count: recordLen) {
+                let cursor = ByteCursor(record)
+                let decoded = readWay(
+                    cursor,
+                    header: header,
+                    originLat: originLat,
+                    originLon: originLon,
+                    end: record.count,
+                    baseZoom: sub.baseZoom
+                )
+                for feature in decoded where kept[row] < plan[row] {
+                    features.append(feature)
+                    kept[row] += 1
+                }
+            }
+            left -= 1
+            offset = next
+        }
+        return features
+    }
+
+    private static func streamVisibleWays(
+        reader: MapFileReader,
+        start: Int64,
+        end: Int64,
+        header: MapsforgeHeader,
+        sub: MapsforgeSubFile,
+        originLat: Double,
+        originLon: Double,
+        wayCounts: [Int],
+        queryRow: Int,
+        limit: Int,
+        view: LatLonBounds,
+        mask: UInt16
+    ) -> [MapFeature] {
+        var quota = WayQuota(limit: limit)
+        var window = WayWindow(reader: reader, end: end)
+        var offset = start
+        var row = 0
+        var left = wayCounts.isEmpty ? 0 : wayCounts[0]
+        var decodedWays = 0
+        let decodeCap = max(limit * 8, 2_500)
+        while offset < end, row <= queryRow, !quota.filled, decodedWays < decodeCap {
+            if left == 0 {
+                row += 1
+                guard row <= queryRow, row < wayCounts.count else { break }
+                left = wayCounts[row]
+                continue
+            }
+            if header.debug { offset += 32 }
+            guard let head = window.slice(at: offset, count: Int(min(12, end - offset))) else { break }
+            let headCursor = ByteCursor(head)
+            let size = headCursor.readVBEU()
+            let headerLen = headCursor.offset
+            let recordLen = headerLen + size
+            let next = offset + Int64(recordLen)
+            guard size >= 0, recordLen >= headerLen, next <= end else { break }
+            let onQuery = row == queryRow
+            var outside = quota.saturated(onQueryRow: onQuery)
+            if !outside, mask != 0xFFFF, size >= 2, headerLen + 2 <= head.count {
+                let bitmap = (UInt16(head[headerLen]) << 8) | UInt16(head[headerLen + 1])
+                outside = (bitmap & mask) == 0
+            }
+            if !outside, let record = window.slice(at: offset, count: recordLen) {
+                let cursor = ByteCursor(record)
+                let decoded = readWay(
+                    cursor,
+                    header: header,
+                    originLat: originLat,
+                    originLon: originLon,
+                    end: record.count,
+                    baseZoom: sub.baseZoom
+                )
+                decodedWays += 1
+                for feature in decoded {
+                    quota.add(feature, view: view, onQueryRow: onQuery)
+                }
+            }
+            left -= 1
+            offset = next
+        }
+        return quota.features()
+    }
+
+    private struct WayWindow {
+        var reader: MapFileReader
+        var end: Int64
+        private var base: Int64 = -1
+        private var data = Data()
+
+        mutating func slice(at offset: Int64, count: Int) -> Data? {
+            guard count >= 0, offset >= 0, offset + Int64(count) <= end else { return nil }
+            if base < 0 || offset < base || offset + Int64(count) > base + Int64(data.count) {
+                let length = min(max(count, 262_144), Int(end - offset))
+                guard length >= count, let loaded = reader.read(offset: offset, length: length), loaded.count == length else { return nil }
+                base = offset
+                data = loaded
+            }
+            let start = Int(offset - base)
+            return data.subdata(in: start..<(start + count))
+        }
+    }
+
+    static let overviewFeatureCap = 12_000
+
+    static func isDetail(queryZoom: Int, sub: MapsforgeSubFile) -> Bool {
+        queryZoom > 11 && queryZoom <= sub.maxZoom
+    }
+
+    private static func tileBudgets(queryZoom: Int, sub: MapsforgeSubFile, queryCount: Int, limit: Int, poiLimit: Int) -> (cap: Int, perTile: Int, poisPerTile: Int) {
+        guard isDetail(queryZoom: queryZoom, sub: sub) else {
+            let cap = overviewFeatureCap
+            let perTile = min(cap, max(cap / max(queryCount, 1), 250))
+            return (cap, perTile, min(poiLimit, 6))
+        }
+        let perTile = queryCount <= 2 ? 4_000 : (queryCount <= 6 ? 2_500 : 1_200)
+        return (max(limit, perTile * min(queryCount, 4)), perTile, poiLimit)
+    }
+
+    private static func tileCenter(column: Int, row: Int, zoom: Int) -> (lat: Double, lon: Double) {
+        let northwest = tileOrigin(x: column, y: row, zoom: zoom)
+        let southeast = tileOrigin(x: column + 1, y: row + 1, zoom: zoom)
+        return ((northwest.lat + southeast.lat) / 2, (northwest.lon + southeast.lon) / 2)
+    }
+
+    fileprivate static func indexedPlace(from feature: MapFeature) -> (key: String, row: IndexedPlace)? {
+        guard let point = searchAnchor(feature), let record = MapSearch.record(tags: feature.tags) else { return nil }
+        let key = "\(record.kind.rawValue)|\(MapSearch.fold(record.displayName))|\(Int((point.0 / 0.0004).rounded()))|\(Int((point.1 / 0.0004).rounded()))"
+        let row = IndexedPlace(
+            name: record.displayName,
+            folded: record.foldedAliases.joined(separator: " "),
+            kind: record.kind.rawValue,
+            latitude: point.0,
+            longitude: point.1
+        )
+        return (key, row)
     }
 
     private static func chooseSubfile(_ header: MapsforgeHeader, bounds: LatLonBounds, queryZoom: Int) -> MapsforgeSubFile? {
@@ -249,7 +885,7 @@ enum MapsforgeReader {
             ?? subs[0]
         for _ in 0..<subs.count {
             let grid = tileGrid(header.bounds, chosen.baseZoom)
-            if tileCount(bounds, zoom: chosen.baseZoom, grid: grid) <= 28 { return chosen }
+            if tileCount(bounds, zoom: chosen.baseZoom, grid: grid) <= tilesKeptForZoom(Int.max) { return chosen }
             guard let lower = subs.filter({ $0.baseZoom < chosen.baseZoom }).max(by: { $0.baseZoom < $1.baseZoom }) else {
                 return chosen
             }
@@ -258,7 +894,11 @@ enum MapsforgeReader {
         return chosen
     }
 
-    static func parseHeader(_ data: Data) -> MapsforgeHeader? {
+    static func subfileBaseZoom(header: MapsforgeHeader, bounds: LatLonBounds, zoom: Int) -> Int? {
+        chooseSubfile(header, bounds: bounds, queryZoom: zoom)?.baseZoom
+    }
+
+    fileprivate static func parseHeader(_ data: Data) -> MapsforgeHeader? {
         let cursor = ByteCursor(data)
         guard data.count > 70 else { return nil }
         let magic = cursor.readASCII(20)
@@ -304,7 +944,7 @@ enum MapsforgeReader {
                 startAddress: start, indexStartAddress: indexStart, subFileSize: size
             ))
         }
-        return MapsforgeHeader(
+        var header = MapsforgeHeader(
             bounds: LatLonBounds(minLatitude: minLat, minLongitude: minLon, maxLatitude: maxLat, maxLongitude: maxLon),
             startLatitude: startLat,
             startLongitude: startLon,
@@ -316,6 +956,8 @@ enum MapsforgeReader {
             debug: debug,
             fileVersion: fileVersion
         )
+        header.hiking = wayTags.contains { $0.contains("osmc") }
+        return header
     }
 
     private static func decodeTile(
@@ -327,12 +969,16 @@ enum MapsforgeReader {
         originLat: Double,
         originLon: Double,
         limit: Int,
-        poiLimit: Int
+        poiLimit: Int,
+        view: LatLonBounds?,
+        mask: UInt16,
+        isCancelled: () -> Bool = { false }
     ) -> [MapFeature]? {
         let rows = sub.maxZoom - sub.minZoom + 1
         guard rows > 0, rows < 30 else { return nil }
         var pois = 0
         var ways = 0
+        var wayRows = Array(repeating: 0, count: rows)
         let queryRow = min(rows - 1, max(0, queryZoom - sub.minZoom))
         for row in 0..<rows {
             let poiCount = cursor.readVBEU()
@@ -341,6 +987,7 @@ enum MapsforgeReader {
             if row <= queryRow {
                 pois += poiCount
                 ways += wayCount
+                wayRows[row] = wayCount
             }
         }
         let firstWayDelta = cursor.readVBEU()
@@ -348,20 +995,322 @@ enum MapsforgeReader {
         if firstWay > end { return nil }
         var features: [MapFeature] = []
         var keptPois = 0
+        var examinedPois = 0
         let poiCap = max(1, poiLimit)
+        let poiScan = view == nil ? poiCap : min(pois, max(poiCap * 50, poiCap))
         for _ in 0..<pois {
-            if cursor.offset >= firstWay || cursor.offset >= end { break }
+            if examinedPois >= poiScan || keptPois >= poiCap || cursor.offset >= firstWay || cursor.offset >= end { break }
             if header.debug { cursor.offset += 32 }
+            examinedPois += 1
+            if examinedPois & 255 == 0, isCancelled() { return nil }
             guard let feature = readPOI(cursor, header: header, originLat: originLat, originLon: originLon) else { break }
-            if keptPois < poiCap {
+            if let view, !WayView.intersects(feature, view) { continue }
+            features.append(feature)
+            keptPois += 1
+        }
+        cursor.offset = min(firstWay, end)
+        if !isDetail(queryZoom: queryZoom, sub: sub), let view {
+            features.append(contentsOf: decodeOverviewWays(
+                cursor,
+                end: end,
+                header: header,
+                sub: sub,
+                originLat: originLat,
+                originLon: originLon,
+                wayCounts: wayRows,
+                queryRow: queryRow,
+                limit: limit,
+                view: view,
+                mask: mask,
+                isCancelled: isCancelled
+            ))
+        } else if queryZoom > 11 {
+            if let view {
+                features.append(contentsOf: decodeVisibleWays(
+                    cursor,
+                    end: end,
+                    header: header,
+                    sub: sub,
+                    originLat: originLat,
+                    originLon: originLon,
+                    wayCounts: wayRows,
+                    queryRow: queryRow,
+                    limit: limit,
+                    view: view,
+                    mask: mask,
+                    isCancelled: isCancelled
+                ))
+            } else {
+                features.append(contentsOf: decodePlannedWays(
+                    cursor,
+                    end: end,
+                    header: header,
+                    sub: sub,
+                    originLat: originLat,
+                    originLon: originLon,
+                    wayCounts: wayRows,
+                    queryRow: queryRow,
+                    limit: limit,
+                    isCancelled: isCancelled
+                ))
+            }
+        } else {
+            features.append(contentsOf: decodeWays(
+                cursor,
+                end: end,
+                header: header,
+                sub: sub,
+                originLat: originLat,
+                originLon: originLon,
+                wayCount: ways,
+                limit: limit,
+                spread: true,
+                isCancelled: isCancelled
+            ))
+        }
+        return features
+    }
+
+    private static func decodePlannedWays(
+        _ cursor: ByteCursor,
+        end: Int,
+        header: MapsforgeHeader,
+        sub: MapsforgeSubFile,
+        originLat: Double,
+        originLon: Double,
+        wayCounts: [Int],
+        queryRow: Int,
+        limit: Int,
+        isCancelled: () -> Bool = { false }
+    ) -> [MapFeature] {
+        let plan = ZoomWayBudget.plan(counts: wayCounts, queryRow: queryRow, limit: limit, favorDetail: true)
+        var features: [MapFeature] = []
+        var steps = 0
+        var row = 0
+        var left = wayCounts.isEmpty ? 0 : wayCounts[0]
+        var kept = Array(repeating: 0, count: wayCounts.count)
+        while row <= queryRow, cursor.offset < end, !ZoomWayBudget.filled(kept, plan, queryRow) {
+            if left == 0 {
+                row += 1
+                guard row <= queryRow, row < wayCounts.count else { break }
+                left = wayCounts[row]
+                continue
+            }
+            steps += 1
+            if steps & 255 == 0, isCancelled() { break }
+            if header.debug { cursor.offset += 32 }
+            if cursor.offset >= end { break }
+            let open = row < plan.count && kept[row] < plan[row]
+            if !open {
+                guard skipWay(cursor, end: end) else { break }
+                left -= 1
+                continue
+            }
+            let before = cursor.offset
+            let decoded = readWay(
+                cursor,
+                header: header,
+                originLat: originLat,
+                originLon: originLon,
+                end: end,
+                baseZoom: sub.baseZoom
+            )
+            if cursor.offset == before { break }
+            left -= 1
+            for feature in decoded where row < plan.count && kept[row] < plan[row] {
                 features.append(feature)
-                keptPois += 1
+                kept[row] += 1
             }
         }
-        cursor.offset = firstWay
+        return features
+    }
+
+    private static func decodeVisibleWays(
+        _ cursor: ByteCursor,
+        end: Int,
+        header: MapsforgeHeader,
+        sub: MapsforgeSubFile,
+        originLat: Double,
+        originLon: Double,
+        wayCounts: [Int],
+        queryRow: Int,
+        limit: Int,
+        view: LatLonBounds,
+        mask: UInt16,
+        isCancelled: () -> Bool = { false }
+    ) -> [MapFeature] {
+        var quota = WayQuota(limit: limit)
+        var steps = 0
+        var row = 0
+        var left = wayCounts.isEmpty ? 0 : wayCounts[0]
+        var decodedWays = 0
+        let decodeCap = max(limit * 8, 2_500)
+        while row <= queryRow, cursor.offset < end, !quota.filled, decodedWays < decodeCap {
+            if left == 0 {
+                row += 1
+                guard row <= queryRow, row < wayCounts.count else { break }
+                left = wayCounts[row]
+                continue
+            }
+            steps += 1
+            if steps & 255 == 0, isCancelled() { break }
+            if header.debug { cursor.offset += 32 }
+            if cursor.offset >= end { break }
+            let onQuery = row == queryRow
+            if quota.saturated(onQueryRow: onQuery) {
+                guard skipWay(cursor, end: end) else { break }
+                left -= 1
+                continue
+            }
+            if skipIfOutside(cursor, end: end, mask: mask) {
+                left -= 1
+                continue
+            }
+            let before = cursor.offset
+            let decoded = readWay(
+                cursor,
+                header: header,
+                originLat: originLat,
+                originLon: originLon,
+                end: end,
+                baseZoom: sub.baseZoom
+            )
+            if cursor.offset == before { break }
+            left -= 1
+            decodedWays += 1
+            for feature in decoded {
+                quota.add(feature, view: view, onQueryRow: onQuery)
+            }
+        }
+        return quota.features()
+    }
+
+    static func overviewRank(_ feature: MapFeature) -> Int? {
+        let tags = feature.tags
+        if let highway = tags["highway"] {
+            switch highway {
+            case "motorway", "trunk": return 0
+            case "primary": return 1
+            case "secondary": return 2
+            case "tertiary": return 3
+            case "motorway_link", "trunk_link", "primary_link", "secondary_link", "tertiary_link": return 4
+            default: return 6
+            }
+        }
+        if tags["admin_level"] == "2" { return 0 }
+        if feature.category == "water" { return 2 }
+        if tags["railway"] == "rail" { return 3 }
+        if feature.category == "land" || feature.category == OsmRenderOptions.catParks { return 5 }
+        return nil
+    }
+
+    private static func decodeOverviewWays(
+        _ cursor: ByteCursor,
+        end: Int,
+        header: MapsforgeHeader,
+        sub: MapsforgeSubFile,
+        originLat: Double,
+        originLon: Double,
+        wayCounts: [Int],
+        queryRow: Int,
+        limit: Int,
+        view: LatLonBounds,
+        mask: UInt16,
+        isCancelled: () -> Bool
+    ) -> [MapFeature] {
+        var kept: [(rank: Int, size: Double, feature: MapFeature)] = []
+        var steps = 0
+        var row = 0
+        var left = wayCounts.isEmpty ? 0 : wayCounts[0]
+        while row <= queryRow, cursor.offset < end {
+            if left == 0 {
+                row += 1
+                guard row <= queryRow, row < wayCounts.count else { break }
+                left = wayCounts[row]
+                continue
+            }
+            steps += 1
+            if steps & 255 == 0, isCancelled() { break }
+            if header.debug { cursor.offset += 32 }
+            if cursor.offset >= end { break }
+            if skipIfOutside(cursor, end: end, mask: mask) {
+                left -= 1
+                continue
+            }
+            let before = cursor.offset
+            let decoded = readWay(
+                cursor,
+                header: header,
+                originLat: originLat,
+                originLon: originLon,
+                end: end,
+                baseZoom: sub.baseZoom
+            )
+            if cursor.offset == before { break }
+            left -= 1
+            for feature in decoded {
+                guard let rank = overviewRank(feature), let box = WayView.box(feature), WayView.overlaps(box, view) else { continue }
+                let size = (box.maxLatitude - box.minLatitude) + (box.maxLongitude - box.minLongitude)
+                kept.append((rank, size, feature))
+            }
+        }
+        guard kept.count > limit else { return kept.map(\.feature) }
+        kept.sort { lhs, rhs in
+            if lhs.rank != rhs.rank { return lhs.rank < rhs.rank }
+            return lhs.size > rhs.size
+        }
+        return kept.prefix(max(limit, 0)).map(\.feature)
+    }
+
+    private static func skipIfOutside(_ cursor: ByteCursor, end: Int, mask: UInt16) -> Bool {
+        guard mask != 0xFFFF else { return false }
+        let start = cursor.offset
+        let size = cursor.readVBEU()
+        let content = cursor.offset
+        let next = content + size
+        guard size >= 2, next >= content, next <= end else {
+            cursor.offset = start
+            return false
+        }
+        let bitmap = cursor.readUInt16()
+        if (bitmap & mask) == 0 {
+            cursor.offset = next
+            return true
+        }
+        cursor.offset = start
+        return false
+    }
+
+    private static func skipWay(_ cursor: ByteCursor, end: Int) -> Bool {
+        let start = cursor.offset
+        let size = cursor.readVBEU()
+        let next = cursor.offset + size
+        guard next >= cursor.offset, next <= end, cursor.offset > start || size == 0 else { return false }
+        cursor.offset = next
+        return true
+    }
+
+    private static func decodeWays(
+        _ cursor: ByteCursor,
+        end: Int,
+        header: MapsforgeHeader,
+        sub: MapsforgeSubFile,
+        originLat: Double,
+        originLon: Double,
+        wayCount: Int,
+        limit: Int,
+        spread: Bool,
+        isCancelled: () -> Bool = { false }
+    ) -> [MapFeature] {
+        let stride = spread && wayCount > limit && limit > 0 ? max(1, min(wayCount, limit * 8) / limit) : 1
+        let scanLimit = min(wayCount, max(limit, 1) * stride)
+        var features: [MapFeature] = []
         var keptWays = 0
-        for _ in 0..<ways {
-            if keptWays >= limit || cursor.offset >= end { break }
+        var seen = 0
+        while seen < scanLimit, cursor.offset < end {
+            if keptWays >= limit { break }
+            seen += 1
+            if seen & 255 == 0, isCancelled() { break }
             if header.debug { cursor.offset += 32 }
             let before = cursor.offset
             let decoded = readWay(
@@ -376,6 +1325,7 @@ enum MapsforgeReader {
                 if cursor.offset == before { break }
                 continue
             }
+            if stride > 1, (seen - 1) % stride != 0 { continue }
             for feature in decoded where keptWays < limit {
                 features.append(feature)
                 keptWays += 1
@@ -389,14 +1339,7 @@ enum MapsforgeReader {
         let lonDiff = cursor.readVBES()
         let special = cursor.readByte()
         let tagCount = Int(special & 0x0f)
-        var tags: [String: String] = [:]
-        for _ in 0..<tagCount {
-            let id = cursor.readVBEU()
-            let pattern = id >= 0 && id < header.poiTags.count ? header.poiTags[id] : ""
-            let value = readVariable(cursor, pattern: pattern)
-            let key = pattern.split(separator: "=").first.map(String.init) ?? pattern
-            if !key.isEmpty { tags[key] = value.isEmpty ? "yes" : value }
-        }
+        var tags = readTags(cursor, count: tagCount, patterns: header.poiTags)
         let flags = cursor.readByte()
         var name: String?
         if flags & 0x80 != 0 { name = readName(cursor, fileVersion: header.fileVersion) }
@@ -424,13 +1367,10 @@ enum MapsforgeReader {
         _ = cursor.readUInt16()
         let special = cursor.readByte()
         let tagCount = Int(special & 0x0f)
-        var tags: [String: String] = [:]
-        for _ in 0..<tagCount {
-            let id = cursor.readVBEU()
-            let pattern = id >= 0 && id < header.wayTags.count ? header.wayTags[id] : ""
-            let value = readVariable(cursor, pattern: pattern)
-            let key = pattern.split(separator: "=").first.map(String.init) ?? pattern
-            if !key.isEmpty { tags[key] = value.isEmpty ? "yes" : value }
+        var tags = readTags(cursor, count: tagCount, patterns: header.wayTags)
+        if tags["natural"] == "sea" || tags["natural"] == "nosea" {
+            cursor.offset = blockEnd
+            return []
         }
         let flags = cursor.readByte()
         var name: String?
@@ -471,8 +1411,7 @@ enum MapsforgeReader {
             }
         }
         cursor.offset = blockEnd
-        let hiking = header.wayTags.joined().contains("osmc")
-        let category = category(for: tags, hiking: hiking)
+        let category = category(for: tags, hiking: header.hiking)
         return lines.map { line in
             MapFeature(geometry: .line(line), category: category, name: name, tags: tags)
         }
@@ -531,6 +1470,21 @@ enum MapsforgeReader {
         return "road"
     }
 
+    private static func readTags(_ cursor: ByteCursor, count: Int, patterns: [String]) -> [String: String] {
+        var chosen: [String] = []
+        for _ in 0..<count {
+            let id = cursor.readVBEU()
+            chosen.append(id >= 0 && id < patterns.count ? patterns[id] : "")
+        }
+        var tags: [String: String] = [:]
+        for pattern in chosen {
+            let value = readVariable(cursor, pattern: pattern)
+            let key = pattern.split(separator: "=").first.map(String.init) ?? pattern
+            if !key.isEmpty { tags[key] = value.isEmpty ? "yes" : value }
+        }
+        return tags
+    }
+
     private static func readName(_ cursor: ByteCursor, fileVersion: Int) -> String {
         if fileVersion >= 4 {
             let text = cursor.readVBEString()
@@ -585,12 +1539,12 @@ enum MapsforgeReader {
         return tags
     }
 
-    private struct TileRef {
+    fileprivate struct TileRef {
         var row: Int
         var col: Int
     }
 
-    private struct TileGrid {
+    fileprivate struct TileGrid {
         var left: Int
         var top: Int
         var width: Int
@@ -679,6 +1633,41 @@ enum MapsforgeReader {
             line.append((lat, lon))
         }
         return line
+    }
+
+    static func geographicBounds(_ id: MapsforgeTileId) -> LatLonBounds {
+        let zoom = min(max(id.baseZoom, 0), 28)
+        let northwest = tileOrigin(x: id.column, y: id.row, zoom: zoom)
+        let southeast = tileOrigin(x: id.column + 1, y: id.row + 1, zoom: zoom)
+        return LatLonBounds(
+            minLatitude: southeast.lat,
+            minLongitude: northwest.lon,
+            maxLatitude: northwest.lat,
+            maxLongitude: southeast.lon
+        )
+    }
+
+    static func subtileMask(column: Int, row: Int, zoom: Int, bounds: LatLonBounds) -> UInt16 {
+        let fine = min(max(zoom, 0), 28) + 2
+        let originX = column << 2
+        let originY = row << 2
+        let minX = tileX(bounds.minLongitude, fine)
+        let maxX = tileX(bounds.maxLongitude, fine)
+        let minY = tileY(bounds.maxLatitude, fine)
+        let maxY = tileY(bounds.minLatitude, fine)
+        let x0 = max(minX, originX)
+        let x1 = min(maxX, originX + 3)
+        let y0 = max(minY, originY)
+        let y1 = min(maxY, originY + 3)
+        guard x0 <= x1, y0 <= y1 else { return 0xFFFF }
+        var mask: UInt16 = 0
+        for y in y0...y1 {
+            for x in x0...x1 {
+                let bit = 15 - ((y - originY) * 4 + (x - originX))
+                mask |= UInt16(1) << UInt16(bit)
+            }
+        }
+        return mask == 0 ? 0xFFFF : mask
     }
 
     private static func tileOrigin(x: Int, y: Int, zoom: Int) -> (lat: Double, lon: Double) {

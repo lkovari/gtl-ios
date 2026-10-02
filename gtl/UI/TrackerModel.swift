@@ -79,7 +79,7 @@ final class TrackerModel {
     var searchIndexing = false
     var searchBusy = false
     var offlineFeatures: [MapFeature] = []
-    private var offlineRaw: [MapFeature] = []
+    var basemapLoadToken = 0
     private var offlineGeneration = 0
     var target: GeoPoint?
     var focusToken = 0
@@ -165,8 +165,14 @@ final class TrackerModel {
     private var offlineTask: Task<Void, Never>?
     private var offlineCancel = OfflineCancel()
     private var writeChain: Task<Void, Never>?
-    private var loadedBounds: LatLonBounds?
-    private var loadedZoom = -1
+    private var tileCache = OfflineTileCache()
+    private var mapReader: MapFileReader?
+    private var basemapHeld = false
+    private var mapHasTiles = false
+    private var tilesDirty = false
+    private var lastTilePublish = Date.distantPast
+    private var indexKey = ""
+    private var indexGeneration = 0
 
     init() {
         let settingsStore = SettingsStore()
@@ -181,7 +187,7 @@ final class TrackerModel {
         locationAuthorization = location.authorization
         wire()
         refreshMaps()
-        scheduleIndex()
+        syncBasemap()
         Task { await reloadSessions() }
     }
 
@@ -229,6 +235,7 @@ final class TrackerModel {
     func setSceneActive(_ active: Bool) {
         guard sceneActive != active else { return }
         sceneActive = active
+        syncBasemap()
         guard active else { return }
         publishLiveFix()
         if logging {
@@ -437,6 +444,7 @@ final class TrackerModel {
         motion.stop()
         UIApplication.shared.isIdleTimerDisabled = false
         status = "Idle"
+        scheduleIndex()
         guard let sessionId else { return }
         let stop = GpsEvent(
             id: 0, sessionId: sessionId, timestamp: now, latitude: latestLatitude ?? 0, longitude: latestLongitude ?? 0,
@@ -726,47 +734,86 @@ final class TrackerModel {
     }
 
     func refreshOffline(bounds: LatLonBounds, zoom: Int) {
-        guard effectiveOffline, let url = try? MapPaths.mapFile(id: settings.selectedMapId), OsmMapFile.isReadable(url),
-              let header = MapsforgeReader.header(of: url) else {
-            offlineRaw = []
-            offlineFeatures = []
-            return
-        }
+        guard basemapWanted, let reader = openReader() else { return }
+        let header = reader.header
         let minLat = max(bounds.minLatitude, header.bounds.minLatitude)
         let maxLat = min(bounds.maxLatitude, header.bounds.maxLatitude)
         let minLon = max(bounds.minLongitude, header.bounds.minLongitude)
         let maxLon = min(bounds.maxLongitude, header.bounds.maxLongitude)
         guard minLat < maxLat, minLon < maxLon else { return }
         let clipped = LatLonBounds(minLatitude: minLat, minLongitude: minLon, maxLatitude: maxLat, maxLongitude: maxLon)
-        if let loadedBounds, zoom == loadedZoom, Self.viewInside(loadedBounds, clipped) { return }
-        offlineCancel.cancelled = true
-        let flag = OfflineCancel()
-        offlineCancel = flag
+        let travel = latestTravelDegrees ?? travelDegrees
+        let padded = Self.clip(Self.queryBounds(clipped, travelDegrees: travel), to: header.bounds)
+        guard padded.minLatitude < padded.maxLatitude, padded.minLongitude < padded.maxLongitude else { return }
+        let featureLimit = 4800
+        let poiLimit = 28
+        let requests = reader.visibleTiles(bounds: padded, focus: clipped, zoom: zoom, featureLimit: featureLimit, poiLimit: poiLimit)
+        let visibleIds = Set(requests.map(\.id))
+        let centerLatitude = (clipped.minLatitude + clipped.maxLatitude) / 2
+        let centerLongitude = (clipped.minLongitude + clipped.maxLongitude) / 2
+        let pinned = Self.centerTile(requests, latitude: centerLatitude, longitude: centerLongitude)
+        let missing = requests.filter {
+            tileCache.needsRefresh(id: $0.id, queryZoom: $0.queryZoom, bounds: clipped)
+        }
+        if missing.isEmpty {
+            if tileCache.update(
+                visibleIds: visibleIds,
+                decoded: [],
+                travelDegrees: travel,
+                centerLatitude: centerLatitude,
+                centerLongitude: centerLongitude,
+                pinnedIds: pinned
+            ) || tilesDirty {
+                publishTiles()
+            }
+            allowIndex()
+            return
+        }
+        let flag = offlineCancel
         offlineTask?.cancel()
         offlineGeneration += 1
         let generation = offlineGeneration
-        let wide = Self.expand(clipped, fraction: zoom <= 11 ? 0.05 : 0.3)
-        let featureLimit = zoom <= 11 ? 2400 : 6000
-        let poiLimit = zoom <= 11 ? 6 : 28
+        let pending = missing
         offlineTask = Task {
             try? await Task.sleep(nanoseconds: 220_000_000)
-            guard !Task.isCancelled, generation == self.offlineGeneration else { return }
-            let raw = await Task.detached(priority: .userInitiated) {
-                MapsforgeReader.features(
-                    url: url,
-                    bounds: wide,
-                    zoom: zoom,
-                    limit: featureLimit,
-                    poiLimit: poiLimit,
-                    isCancelled: { flag.cancelled }
-                )
-            }.value
-            guard !Task.isCancelled, generation == self.offlineGeneration else { return }
-            self.offlineRaw = raw
-            self.loadedBounds = wide
-            self.loadedZoom = zoom
-            self.applyOfflineFilter()
+            for request in pending {
+                guard !Task.isCancelled, generation == self.offlineGeneration, self.basemapWanted else { return }
+                let decoded = await Task.detached(priority: .userInitiated) {
+                    reader.decode([request], isCancelled: { flag.cancelled })
+                }.value
+                guard self.basemapWanted, self.mapReader === reader else { return }
+                guard !Task.isCancelled, generation == self.offlineGeneration else {
+                    if !decoded.isEmpty {
+                        self.tileCache.keep(decoded)
+                        self.tilesDirty = true
+                    }
+                    return
+                }
+                if self.tileCache.update(
+                    visibleIds: visibleIds,
+                    decoded: decoded,
+                    travelDegrees: travel,
+                    centerLatitude: centerLatitude,
+                    centerLongitude: centerLongitude,
+                    pinnedIds: pinned
+                ) {
+                    self.tilesDirty = true
+                }
+                if self.tilesDirty, Date().timeIntervalSince(self.lastTilePublish) > 0.4 {
+                    self.publishTiles()
+                }
+            }
+            guard generation == self.offlineGeneration, self.basemapWanted else { return }
+            if self.tilesDirty { self.publishTiles() }
+            self.allowIndex()
         }
+    }
+
+    private static func centerTile(_ requests: [MapsforgeTileRequest], latitude: Double, longitude: Double) -> Set<MapsforgeTileId> {
+        guard let closest = requests.min(by: {
+            hypot($0.latitude - latitude, $0.longitude - longitude) < hypot($1.latitude - latitude, $1.longitude - longitude)
+        }) else { return [] }
+        return [closest.id]
     }
 
     func search() {
@@ -796,7 +843,7 @@ final class TrackerModel {
     private func runSearch(_ query: String, _ generation: Int) async {
         guard generation == searchGeneration else { return }
         if effectiveOffline {
-            var candidates = MapsforgeReader.searchCandidates(offlineRaw)
+            var candidates = MapsforgeReader.searchCandidates(offlineFeatures)
             if let match = MapSearch.ftsMatch(query), let places {
                 let indexed = (try? await places.search(match: match, limit: 40)) ?? []
                 candidates.append(contentsOf: indexed)
@@ -835,7 +882,7 @@ final class TrackerModel {
     }
 
     func commitMapLayers() {
-        offlineFeatures = offlineRaw
+        guard basemapWanted else { return }
         layerEpoch += 1
     }
 
@@ -845,23 +892,25 @@ final class TrackerModel {
     }
 
     private func applyOfflineFilter() {
-        offlineFeatures = effectiveOffline ? offlineRaw : []
-        layerEpoch += 1
+        syncBasemap()
+        if basemapWanted {
+            layerEpoch += 1
+        }
     }
 
     func useMap(_ id: String) {
+        releaseBasemap()
         settings.selectedMapId = id
         settings.useOfflineMap = true
         store.save(settings)
-        loadedBounds = nil
-        loadedZoom = -1
         refreshMaps()
-        scheduleIndex()
+        syncBasemap()
     }
 
     func stopUsingOffline() {
         settings.useOfflineMap = false
         store.save(settings)
+        syncBasemap()
     }
 
     func deleteMap(_ id: String) {
@@ -881,6 +930,7 @@ final class TrackerModel {
             if deletingSelected { settings.selectedMapId = "" }
             store.save(settings)
         }
+        syncBasemap()
     }
 
     func download(_ region: OsmRegion) {
@@ -945,6 +995,7 @@ final class TrackerModel {
     }
 
     func onTabChange() {
+        syncBasemap()
         if tab == .route {
             refreshElevation(force: true)
         }
@@ -1034,6 +1085,7 @@ final class TrackerModel {
             )
             sessionId = id
             logging = true
+            cancelIndex()
             mapCleared = false
             selectedSessionId = nil
             startedAt = now
@@ -1199,24 +1251,28 @@ final class TrackerModel {
         focusToken += 1
     }
 
-    private static func expand(_ bounds: LatLonBounds, fraction: Double) -> LatLonBounds {
-        let lat = (bounds.maxLatitude - bounds.minLatitude) * fraction
-        let lon = (bounds.maxLongitude - bounds.minLongitude) * fraction
+    private static func queryBounds(_ bounds: LatLonBounds, travelDegrees: Double?) -> LatLonBounds {
+        guard let travelDegrees else { return bounds }
+        let rad = travelDegrees * .pi / 180
+        let latSpan = max(bounds.maxLatitude - bounds.minLatitude, 0.001)
+        let lonSpan = max(bounds.maxLongitude - bounds.minLongitude, 0.001)
+        let latitude = cos(rad) * latSpan * 0.35
+        let longitude = sin(rad) * lonSpan * 0.35
         return LatLonBounds(
-            minLatitude: bounds.minLatitude - lat,
-            minLongitude: bounds.minLongitude - lon,
-            maxLatitude: bounds.maxLatitude + lat,
-            maxLongitude: bounds.maxLongitude + lon
+            minLatitude: bounds.minLatitude + min(latitude, 0),
+            minLongitude: bounds.minLongitude + min(longitude, 0),
+            maxLatitude: bounds.maxLatitude + max(latitude, 0),
+            maxLongitude: bounds.maxLongitude + max(longitude, 0)
         )
     }
 
-    private static func viewInside(_ loaded: LatLonBounds, _ view: LatLonBounds) -> Bool {
-        let latMargin = max(0.002, (loaded.maxLatitude - loaded.minLatitude) * 0.12)
-        let lonMargin = max(0.002, (loaded.maxLongitude - loaded.minLongitude) * 0.12)
-        return view.minLatitude >= loaded.minLatitude + latMargin
-            && view.maxLatitude <= loaded.maxLatitude - latMargin
-            && view.minLongitude >= loaded.minLongitude + lonMargin
-            && view.maxLongitude <= loaded.maxLongitude - lonMargin
+    private static func clip(_ bounds: LatLonBounds, to header: LatLonBounds) -> LatLonBounds {
+        LatLonBounds(
+            minLatitude: max(bounds.minLatitude, header.minLatitude),
+            minLongitude: max(bounds.minLongitude, header.minLongitude),
+            maxLatitude: min(bounds.maxLatitude, header.maxLatitude),
+            maxLongitude: min(bounds.maxLongitude, header.maxLongitude)
+        )
     }
 
     private func finishDownload(id: String, temp: URL) {
@@ -1278,33 +1334,139 @@ final class TrackerModel {
         if !aim.dimmed { lastTravelDegrees = aim.degrees }
     }
 
-    private func scheduleIndex() {
+    private var basemapWanted: Bool {
+        effectiveOffline && tab == .map && sceneActive
+    }
+
+    private func syncBasemap() {
+        if basemapWanted {
+            let opened = !basemapHeld
+            if opened {
+                basemapHeld = true
+                basemapLoadToken += 1
+            }
+            if opened || indexTask == nil {
+                scheduleIndex()
+            }
+        } else {
+            releaseBasemap()
+        }
+    }
+
+    private func releaseBasemap() {
+        basemapHeld = false
+        offlineCancel.cancelled = true
+        offlineCancel = OfflineCancel()
+        offlineTask?.cancel()
+        offlineTask = nil
+        offlineGeneration += 1
+        cancelIndex()
+        mapHasTiles = false
+        tilesDirty = false
+        tileCache.removeAll()
+        mapReader?.close()
+        mapReader = nil
+        guard !offlineFeatures.isEmpty else { return }
+        offlineFeatures = []
+        layerEpoch += 1
+    }
+
+    private func publishTiles() {
+        tilesDirty = false
+        lastTilePublish = Date()
+        offlineFeatures = tileCache.features()
+        layerEpoch += 1
+    }
+
+    private func allowIndex() {
+        guard basemapWanted else { return }
+        mapHasTiles = true
+        scheduleIndex()
+    }
+
+    private func openReader() -> MapFileReader? {
+        guard let url = try? MapPaths.mapFile(id: settings.selectedMapId) else { return nil }
+        if let mapReader, mapReader.url == url { return mapReader }
+        mapReader?.close()
+        let opened = MapFileReader.open(url)
+        mapReader = opened
+        return opened
+    }
+
+    private func cancelIndex() {
+        indexGeneration += 1
         indexTask?.cancel()
-        guard effectiveOffline, let url = try? MapPaths.mapFile(id: settings.selectedMapId), OsmMapFile.isReadable(url) else {
+        indexTask = nil
+        indexKey = ""
+        searchIndexing = false
+    }
+
+    private func scheduleIndex() {
+        guard mapHasTiles else { return }
+        guard PlaceIndexPolicy.shouldStart(logging: logging, mapVisible: basemapWanted) else { return }
+        guard let url = try? MapPaths.mapFile(id: settings.selectedMapId), OsmMapFile.isReadable(url) else {
             searchIndexing = false
             return
         }
-        searchIndexing = true
-        let places = places
         let attrs = try? FileManager.default.attributesOfItem(atPath: url.path)
         let bytes = (attrs?[.size] as? NSNumber)?.int64Value ?? 0
         let modified = Int64((((attrs?[.modificationDate] as? Date)?.timeIntervalSince1970) ?? 0) * 1000)
-        indexTask = Task.detached(priority: .utility) { [places] in
+        let key = "\(url.path)#\(bytes)#\(modified)"
+        if indexTask != nil, indexKey == key { return }
+        indexTask?.cancel()
+        indexGeneration += 1
+        let generation = indexGeneration
+        indexKey = key
+        let places = places
+        indexTask = Task.detached(priority: .background) { [places] in
+            guard let reader = MapFileReader.open(url) else {
+                await MainActor.run {
+                    guard generation == self.indexGeneration else { return }
+                    self.searchIndexing = false
+                    self.indexTask = nil
+                    self.indexKey = ""
+                }
+                return
+            }
+            defer { reader.close() }
             if await places?.isReady(path: url.path, bytes: bytes, modified: modified) == true {
                 await MainActor.run {
-                    guard !Task.isCancelled else { return }
+                    guard generation == self.indexGeneration else { return }
                     self.searchIndexing = false
+                    self.indexTask = nil
                     if MapSearch.accepts(self.searchQuery) { self.search() }
                 }
                 return
             }
-            let rows = MapsforgeReader.namedPlaces(url: url, limit: MapSearch.maxIndexedPlaces) { Task.isCancelled }
-            guard !Task.isCancelled else { return }
-            try? await places?.replaceAll(path: url.path, bytes: bytes, modified: modified, rows: rows)
+            guard let places else { return }
             await MainActor.run {
-                guard !Task.isCancelled else { return }
+                guard generation == self.indexGeneration else { return }
+                self.searchIndexing = true
+            }
+            let scan = reader.placeScan(limit: MapSearch.maxIndexedPlaces)
+            var failed = false
+            do {
+                try await places.beginReplace()
+                while !Task.isCancelled {
+                    let batch = scan.nextBatch(400) { Task.isCancelled }
+                    if batch.isEmpty { break }
+                    try await places.insertBatch(batch)
+                }
+                if Task.isCancelled {
+                    try await places.abort()
+                } else {
+                    try await places.finish(path: url.path, bytes: bytes, modified: modified)
+                }
+            } catch {
+                failed = true
+                try? await places.abort()
+            }
+            await MainActor.run {
+                guard generation == self.indexGeneration else { return }
                 self.searchIndexing = false
-                if MapSearch.accepts(self.searchQuery) { self.search() }
+                self.indexTask = nil
+                self.indexKey = ""
+                if !failed, !Task.isCancelled, MapSearch.accepts(self.searchQuery) { self.search() }
             }
         }
     }

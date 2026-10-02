@@ -5,6 +5,7 @@ import SwiftUI
 struct MapTab: View {
     @Bindable var model: TrackerModel
     @Namespace private var mapScope
+    @Environment(\.colorScheme) private var scheme
     @State private var searchOpen = false
     @State private var layersOpen = false
     @State private var speedScaleToggled = false
@@ -62,7 +63,7 @@ struct MapTab: View {
     @ViewBuilder
     private var mapTapCard: some View {
         if model.mapTapMenu {
-            VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 6) {
                 Button(L10n.text("Distance", "Távolság")) { model.chooseTapDistance() }
                     .accessibilityIdentifier("mapTapDistance")
                 Button(L10n.text("GPS coordinate", "GPS koordináta")) { model.chooseTapCoordinate() }
@@ -73,10 +74,11 @@ struct MapTab: View {
                 if let notice = model.routeNotice {
                     Text(notice)
                         .font(.caption)
+                        .foregroundStyle(overlayInk)
                         .padding(.top, 4)
                 }
             }
-            .buttonStyle(.bordered)
+            .buttonStyle(OverlayChoiceButton(ink: overlayInk, fill: overlayFill))
             .padding(8)
             .background(.ultraThinMaterial)
             .clipShape(RoundedRectangle(cornerRadius: 10))
@@ -100,6 +102,7 @@ struct MapTab: View {
                     .accessibilityIdentifier("mapTapClose")
             }
             .padding(8)
+            .tint(overlayInk)
             .background(.ultraThinMaterial)
             .clipShape(RoundedRectangle(cornerRadius: 10))
             .offset(x: model.mapTapX, y: model.mapTapY)
@@ -129,10 +132,19 @@ struct MapTab: View {
             }
             .padding(8)
             .frame(maxWidth: 260, alignment: .leading)
+            .tint(overlayInk)
             .background(.ultraThinMaterial)
             .clipShape(RoundedRectangle(cornerRadius: 10))
             .offset(x: model.mapTapX, y: model.mapTapY)
         }
+    }
+
+    private var overlayInk: Color {
+        scheme == .dark ? GtlColor.moonCream : GtlColor.nightInk
+    }
+
+    private var overlayFill: Color {
+        scheme == .dark ? GtlColor.cockpitPanel : Color.white
     }
 
     @ViewBuilder
@@ -149,6 +161,7 @@ struct MapTab: View {
                 distanceLatitude: model.distanceTarget?.latitude,
                 distanceLongitude: model.distanceTarget?.longitude,
                 mapLineToken: model.mapLineToken,
+                basemapLoadToken: model.basemapLoadToken,
                 routeCount: model.routeCoordinates.count,
                 travelDegrees: model.travelDegrees,
                 tiltResetToken: model.tiltResetToken,
@@ -181,6 +194,7 @@ struct MapTab: View {
                     searchOpen = false
                 }
                 .font(.subheadline)
+                .tint(overlayInk)
             }
         }
         .padding(8)
@@ -418,6 +432,21 @@ struct MapTab: View {
                 .clipShape(Circle())
         }
         .accessibilityIdentifier(id)
+    }
+}
+
+private struct OverlayChoiceButton: ButtonStyle {
+    var ink: Color
+    var fill: Color
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.body)
+            .foregroundStyle(ink)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(fill.opacity(configuration.isPressed ? 0.82 : 1))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 }
 
@@ -748,6 +777,18 @@ extension SpeedColor {
     }
 }
 
+private struct OverlayStamp: Equatable {
+    var lineToken: Int
+    var routeCount: Int
+    var runs: Int
+    var tail: Int
+    var latitude: Double?
+    var longitude: Double?
+    var bearing: Double?
+    var targetLatitude: Double?
+    var targetLongitude: Double?
+}
+
 struct OfflineMapRepresentable: UIViewRepresentable {
     var model: TrackerModel
     var features: [MapFeature]
@@ -759,6 +800,7 @@ struct OfflineMapRepresentable: UIViewRepresentable {
     var distanceLatitude: Double?
     var distanceLongitude: Double?
     var mapLineToken: Int
+    var basemapLoadToken: Int
     var routeCount: Int
     var travelDegrees: Double?
     var tiltResetToken: Int
@@ -787,6 +829,7 @@ struct OfflineMapRepresentable: UIViewRepresentable {
     func updateUIView(_ map: MLNMapView, context: Context) {
         context.coordinator.model = model
         context.coordinator.lineToken = mapLineToken
+        context.coordinator.basemapLoadToken = basemapLoadToken
         context.coordinator.features = features
         context.coordinator.layerEpoch = layerEpoch
         context.coordinator.zoomTicket = zoomTicket
@@ -803,6 +846,7 @@ struct OfflineMapRepresentable: UIViewRepresentable {
         context.coordinator.place(map)
         context.coordinator.applyZoom(map)
         context.coordinator.applyFocus(map)
+        context.coordinator.applyBasemapLoad(map)
         context.coordinator.sync(map)
     }
 
@@ -829,6 +873,8 @@ struct OfflineMapRepresentable: UIViewRepresentable {
         var distanceLongitude: Double?
         var routeCount = 0
         var lineToken = 0
+        var basemapLoadToken = 0
+        private var appliedBasemapLoad = 0
         var travelDegrees: Double?
         var tiltResetToken = 0
         var logging = false
@@ -844,6 +890,7 @@ struct OfflineMapRepresentable: UIViewRepresentable {
         private var anchorsDirty = true
         private var cachedZoom = Int.min
         private var cachedAnchors: [LabelAnchor] = []
+        private var overlayStamp: OverlayStamp?
         init(model: TrackerModel) { self.model = model }
 
         @objc func handleMapTap(_ gesture: UITapGestureRecognizer) {
@@ -894,7 +941,7 @@ struct OfflineMapRepresentable: UIViewRepresentable {
             lastLabelTime = CACurrentMediaTime()
             redrawLabels(mapView)
             moveTapAnchor(mapView)
-            let zoom = Int(mapView.zoomLevel.rounded())
+            let zoom = Self.queryZoom(mapView.zoomLevel)
             let bounds = mapView.visibleCoordinateBounds
             let box = LatLonBounds(
                 minLatitude: bounds.sw.latitude,
@@ -915,6 +962,7 @@ struct OfflineMapRepresentable: UIViewRepresentable {
             addFill(style, "fill-park", "park", UIColor(red: 0.68, green: 0.84, blue: 0.62, alpha: 1), 0.95)
             addFill(style, "fill-building", "building", UIColor(red: 0.86, green: 0.80, blue: 0.74, alpha: 1), 1, outline: UIColor(red: 0.62, green: 0.55, blue: 0.50, alpha: 1))
             addLine(style, "line-contour", "contour", UIColor(red: 0.62, green: 0.48, blue: 0.36, alpha: 0.85), 1)
+            addLine(style, "line-border", "border", UIColor(red: 0.55, green: 0.35, blue: 0.62, alpha: 0.9), 1.6)
             addLine(style, "line-waterway", "waterway", UIColor(red: 0.45, green: 0.68, blue: 0.78, alpha: 1), 1.6)
             addLine(style, "line-casing", ["motorway", "primary", "secondary", "tertiary", "road"], UIColor(red: 0.55, green: 0.52, blue: 0.48, alpha: 1), 4.2)
             addLine(style, "line-road", "road", UIColor(red: 1, green: 1, blue: 1, alpha: 1), 2.2)
@@ -1037,8 +1085,9 @@ struct OfflineMapRepresentable: UIViewRepresentable {
 
         func place(_ map: MLNMapView) {
             let id = model.settings.selectedMapId
-            guard let url = try? MapPaths.mapFile(id: id), let header = MapsforgeReader.header(of: url) else { return }
             let first = placedId != id
+            if !first && cameraSet { return }
+            guard let url = try? MapPaths.mapFile(id: id), let header = MapsforgeReader.header(of: url) else { return }
             if first { framed = false }
             placedId = id
             cameraReady = true
@@ -1058,7 +1107,26 @@ struct OfflineMapRepresentable: UIViewRepresentable {
                     maxLatitude: header.startLatitude + span,
                     maxLongitude: header.startLongitude + span
                 ),
-                zoom: zoom
+                zoom: Self.queryZoom(Double(zoom))
+            )
+        }
+
+        static func queryZoom(_ mapZoom: Double) -> Int {
+            Int((mapZoom + 1).rounded())
+        }
+
+        func applyBasemapLoad(_ map: MLNMapView) {
+            guard cameraSet, appliedBasemapLoad != basemapLoadToken else { return }
+            appliedBasemapLoad = basemapLoadToken
+            let bounds = map.visibleCoordinateBounds
+            model.refreshOffline(
+                bounds: LatLonBounds(
+                    minLatitude: bounds.sw.latitude,
+                    minLongitude: bounds.sw.longitude,
+                    maxLatitude: bounds.ne.latitude,
+                    maxLongitude: bounds.ne.longitude
+                ),
+                zoom: Self.queryZoom(map.zoomLevel)
             )
         }
 
@@ -1087,17 +1155,40 @@ struct OfflineMapRepresentable: UIViewRepresentable {
                     maxLatitude: target.latitude + span,
                     maxLongitude: target.longitude + span
                 ),
-                zoom: Int(zoom.rounded())
+                zoom: Self.queryZoom(zoom)
             )
         }
 
         func sync(_ map: MLNMapView) {
-            if builtLayerEpoch != layerEpoch {
+            if builtLayerEpoch != layerEpoch, let source {
                 builtLayerEpoch = layerEpoch
-                source?.shape = MLNShapeCollectionFeature(shapes: mapShapes())
+                source.shape = MLNShapeCollectionFeature(shapes: mapShapes())
                 anchorsDirty = true
                 frameLocalStreets(map)
             }
+            let stamp = OverlayStamp(
+                lineToken: lineToken,
+                routeCount: routeCount,
+                runs: model.speedRuns.count,
+                tail: model.liveTail?.points.count ?? 0,
+                latitude: userLatitude,
+                longitude: userLongitude,
+                bearing: travelDegrees,
+                targetLatitude: distanceLatitude,
+                targetLongitude: distanceLongitude
+            )
+            if overlayStamp != stamp {
+                overlayStamp = stamp
+                overlaySource?.shape = MLNShapeCollectionFeature(shapes: overlayShapes())
+            }
+            if anchorsDirty { redrawLabels(map) }
+            if !suppressFollow {
+                applyFollow(map)
+            }
+            suppressFollow = false
+        }
+
+        private func overlayShapes() -> [MLNShape & MLNFeature] {
             var overlay: [MLNShape & MLNFeature] = []
             for run in model.speedRuns {
                 guard run.points.count >= 2 else { continue }
@@ -1130,12 +1221,7 @@ struct OfflineMapRepresentable: UIViewRepresentable {
                 target.attributes = ["paint": "target"]
                 overlay.append(target)
             }
-            overlaySource?.shape = MLNShapeCollectionFeature(shapes: overlay)
-            if anchorsDirty { redrawLabels(map) }
-            if !suppressFollow {
-                applyFollow(map)
-            }
-            suppressFollow = false
+            return overlay
         }
 
         private func applyFollow(_ map: MLNMapView) {
@@ -1472,6 +1558,9 @@ private func mapPaint(_ feature: MapFeature, closed: Bool) -> String {
         case "tertiary", "tertiary_link": return "tertiary"
         case "path", "footway", "track", "bridleway", "steps": return "path"
         case "cycleway": return "cycle"
+        case "":
+            if feature.tags["admin_level"] == "2" { return "border" }
+            return feature.category == OsmRenderOptions.catTransit ? "road" : "none"
         default: return "road"
         }
     }
@@ -1491,7 +1580,7 @@ private func layerPaints(_ feature: MapFeature, closed: Bool, settings: GtlSetti
             : !settings.tuhu.contours
     )
     let hideTransit = feature.category == OsmRenderOptions.catTransit && !(hiking ? settings.tuhu.urbanPoi : settings.osm.transit)
-    if !hideBuilding && !hidePark && !hideContour && !hideTransit {
+    if base != "none" && !hideBuilding && !hidePark && !hideContour && !hideTransit {
         paints.append(base)
     }
     if hiking && settings.tuhu.paths && pathLike {
