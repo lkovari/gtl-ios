@@ -19,7 +19,7 @@ Az Xcode-projekt a `gtl.xcodeproj`. A forrás a `gtl/` mappában van. A közös 
 | Megjelenő név | GPS Track Logger |
 | Magyar kezdőképernyő-név | GTL GPS útvonal napló |
 | Bundle azonosító | `com.lkovari.mobile.apps.gtl` |
-| Verzió | 2.0.15 |
+| Verzió | 1.0.1 |
 | Build | 33 |
 | Készülékek | csak iPhone, álló tájolás |
 | Nyelvek | angol és magyar, a rendszer nyelve szerint |
@@ -124,7 +124,7 @@ Egy hajszálvonal alatt az eltelt idő és a számláló a mozgásban töltött 
 
 A magassági profil csak akkor jelenik meg, ha két pontnak van GPS-magassága. Kármin vonal, alatta halvány kitöltés, az utolsó ponton egy pötty. A rajz alsó és felső magassága bal oldalon van. Két halvány vízszintes vezető és egy alapvonal ül a vonal mögött. Ha van nyomásminta, szaggatott türkiz vonal, sötét módban cián, a barometrikus magasság, és egy rövid jelmagyarázat nevezi meg a GPS magasságot és a Barót. A két magasság nélkül a profil nem rajzolódik, üres diagram nem tölti ki a képernyőt.
 
-A beállítások: használat (Repülő, Hajó, Autó, Motor, Kerékpár, Futás/Túra), metrikus / angolszász / ICAO mértékegység, megjelenés, rögzítési sűrűség, barométer ha a telefonon van, és a használt térkép rétegkapcsolói.
+A Beállítások úgy épül fel, mint a Névjegy és a Súgó. A felső kártya mindig látszik: a Használati mód hat ikonnal és névvel (Repülő, Hajó, Autó, Motor, Kerékpár, Futás/Túra), a kiválasztott magentával, alatta a Mértékegység három gombbal (Metric, Imperial, ICAO). A kártya alatt minden csoportnak címsora van, ami koppintásra lenyílik, és egyszerre több is nyitva lehet: Megjelenés, Rögzítés a rögzítési sűrűséggel, Barométer, ha a telefonon van, és Adatvédelmi nyilatkozat. Az OpenStreetMap vagy a Turistautak.hu rétegkapcsolói külön csoportot alkotnak, ami csak akkor látszik, ha a Letöltött térkép be van kapcsolva.
 
 A mentett útvonalak megoszthatók GPX-ként vagy KMZ-ként, megjeleníthetők a térképen, vagy törölhetők.
 
@@ -183,7 +183,7 @@ Az offline térkép helykeresése készüléken lévő indexet használ. Az inde
 
 A privacy manifest pontos helyet kér az app működéséhez. A required reason API okok: UserDefaults `CA92.1`, fájlidő `C617.1`, lemezhely `E174.1`. Az app nem követ. Az `ITSAppUsesNonExemptEncryption` hamis.
 
-A naplózott nyomvonal, a gyorsulás és a dőlés a telefon SQLite adatbázisában marad. Az iPhone mentése ezt az adatbázist tartalmazza. A letöltött térképfájl a mentésből ki van zárva. A térkép, a keresés, az útvonal és a cím az Apple-nek küldi az ehhez szükséges koordinátát vagy térképablakot. Az OSM- és a Turistautak-letöltésnél a kiszolgáló látja az IP-címet és a kért fájlt. A naplózott track nem kerül a fejlesztő szerverére. Ezt mondja az első képernyő és a Súgó használati bekezdése is.
+A naplózott nyomvonal, a gyorsulás és a dőlés a telefon SQLite adatbázisában marad. Az iPhone mentése ezt az adatbázist tartalmazza. A letöltött térképfájl a mentésből ki van zárva. A térkép, a keresés, az útvonal és a cím az Apple-nek küldi az ehhez szükséges koordinátát vagy térképablakot. Az OSM- és a Turistautak-letöltésnél a kiszolgáló látja az IP-címet és a kért fájlt. Letöltött térképen a helykeresés a telefonon fut. A hibanapló a telefonon marad, és sehova nem kerül elküldésre. A naplózott track nem kerül a fejlesztő szerverére. Ezt mondja az első képernyő és a Súgó használati bekezdése is.
 
 Az adatvédelmi nyilatkozat: `https://lkovari.github.io/KLHome/assets/bigfiles/gtl-ios-private-policy.html`. Ugyanez az App Store Connect Support URL. A forrás a `docs/gtl-ios-private-policy.html` fájl; a lapot a feltöltés előtt a KLHome oldalra kell másolni. A névjegyben a `laszlo.kovary@gmail.com` cím is ott van. A link az első képernyőn, a Beállításokban és a Súgóban is elérhető.
 
@@ -265,6 +265,35 @@ Régen az offline OSM sarokfelirat `© OpenStreetMap` volt. Az ODbL a produced w
 A Turistautak sarokfelirat továbbra is `© Turistautak.hu`. A névjegy hozzáteszi, hogy a feltételek egyértelmű hivatkozást kérnek a lapra, ahol az adat látszik, és a fájl a saját használatra kerül a telefonra. Van link a `https://turistautak.hu` címre és a jogi nyilatkozatra. A letöltés bent maradt, mert a feltétel a saját használatra mentést engedi, ha a hivatkozás látszik.
 
 A névjegy kapott egy MapLibre sort: MapLibre Native, BSD 2-Clause, és a 6.31.0 csomag copyright mondatai (MapLibre contributors, MapTiler.com, Mapbox). A bináris terjesztés ezt a szöveget kéri. Új a Támogatás sor: a nyilatkozat linkje és a `laszlo.kovary@gmail.com` cím. A Bitbucket tároló sora megmaradt, az nem a támogatás. Az App Store Connect Support URL a nyilatkozat lapja, nem a tároló gyökere.
+
+### Beállítások, Névjegy és az 1.0.1 verzió
+
+A Beállítások korábban egyetlen hosszú rendszerűrlap volt. Most úgy épül fel, mint a Névjegy és a Súgó: kártyák az app hátterén, minden csoport a saját címsora alatt.
+
+- A felső kártya mindig nyitva van, és a Használati módot meg a Mértékegységet tartalmazza, így mindkettő akkor is látszik, ha minden más be van csukva. A Használati mód hat ikon a nevével, soronként három; koppintásra a választott magentára vált. A Mértékegység egy sor három gombbal: Metric, Imperial és ICAO, a választott kitöltve.
+- A Megjelenés, a Rögzítés, a Barométer és az Adatvédelmi nyilatkozat címsor. Koppintásra a csoport lenyílik, újabb koppintásra becsukódik. Egyszerre több csoport is nyitva lehet; a Névjegy és a Súgó továbbra is egyszerre egyet nyit. A Beállítások megnyitásakor minden csoport csukva indul.
+- Az OpenStreetMap csoport, illetve a Turistautak.hu, ha az a térkép van kiválasztva, csak akkor látszik, ha a Letöltött térkép kapcsoló be van kapcsolva. Korábban attól függött, hogy van-e használatban letöltött fájl. A kapcsoló kikapcsolása elrejti a csoportot. A Térkép fül réteg gombja nem változott.
+- A Barométer továbbra is csak nyomásszenzoros telefonon jelenik meg. A kapcsolók, a csúszkák és a gombok ugyanazt csinálják, mint eddig.
+
+A Névjegy három helyen változott:
+
+- Az Alkalmazás adatai az 1.0.1 verziót mutatja. A sor a verziót az app csomagjából olvassa, így a `MARKETING_VERSION` értékét követi, ami most minden build konfigurációban 1.0.1. A build szám 33 maradt.
+- Az Eredeti tároló alatt egy egysoros megjegyzés áll arról, mikori az a kódbázis, alatta pedig magentával a Bitbucket cím.
+- A Szerzői jog szövege: `Copyright © 2026 by László Kővári`. A 2014-es kezdőév kikerült, itt és az adatvédelmi lap láblécéből is.
+
+Az adatvédelmi lap, a `docs/gtl-ios-private-policy.html`, angolul és magyarul naprakész lett. A dátuma 2026. október 2., és az 1.0.1 verziót nevezi meg. Új vagy átírt részek:
+
+- Helymeghatározás: az első kérés „Az app használata közben”; a Mindig kérés előtti lap; mit csinál a zárolt képernyő az egyes engedélyeknél; naplózáson kívül nincs háttérbeli helyolvasás; Pontos hely; az iránytű irányszöge nem tárolódik.
+- Adatok az iPhone-on: a tárolt mezők teljes listája, benne a sebesség, az irányszög, a pontosság, a nyomás és a használati mód.
+- Hibanapló: mi van egy sorban, a méretkorlát, hogy a napló nem hagyja el a telefont, és hogyan nyílik meg a hibanapló és a tárolt pontok táblázata.
+- Apple térkép: letöltött térképen a helykeresés a telefonon fut; az útvonal és a cím ekkor is az Apple-höz megy.
+- Offline térképletöltés: a Mapsforge kiszolgáló név szerint, a mobilhálózati letöltés előtti kérdés, és hogy a letöltött térkép rajzolása nem indít hálózati kérést.
+- A te döntéseid: az engedély visszavonása és az adatok törlése a telefonon.
+- Amit nem csinálunk: nincs összeomlási jelentés és használati statisztika.
+
+A fájlt újra át kell másolni a KLHome oldalra, különben az appbeli link a régebbi szöveget nyitja.
+
+A UI teszt a szerzői jogi sorban a 2014 helyett a 2026-ot keresi, a Beállításokban pedig a Használati mód címsort.
 
 ### Ami nem változott
 
@@ -375,7 +404,7 @@ Megosztás a Mentett útvonalakból. A fájl a Fájlok appban van: A(z) iPhone-o
 
 A KMZ az indulás, a szünet és a megállás jelét mentéskor rakja össze, egy-egy 1×1-es PNG-ként. A PNG ellenőrző összegét négy bájtként kell a fájlba írni. Régen ez `UInt8(self >> 24)` és a többi eltolás volt, csonkítás nélkül. A Swift leállítja a folyamatot, ha a 32 bites szám nem fér bele egy bájtba. Ez a főszálon történt, a KMZ mentése közben. Az iOS öt másodperc után bezárta az appot, mert a főszál nem fejezte be a kilépést.
 
-Most mind a négy bájt `truncatingIfNeeded` átalakítással készül: a felső bitek leesnek, a folyamat nem áll meg. A `testGpxAndMarkers` ellenőrzi, hogy a zöld, a borostyán és a piros ikon PNG-fejléccel indul. A telefonon lévő 2.0.15 (33) buildben a régi átalakítás van. Az új csak a következő telepítés után érvényes.
+Most mind a négy bájt `truncatingIfNeeded` átalakítással készül: a felső bitek leesnek, a folyamat nem áll meg. A `testGpxAndMarkers` ellenőrzi, hogy a zöld, a borostyán és a piros ikon PNG-fejléccel indul. A telefonon lévő korábbi, 33-as buildben a régi átalakítás van. Az új csak a következő telepítés után érvényes.
 
 ### Útvonal a koppintott pontig
 

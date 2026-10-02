@@ -25,7 +25,7 @@ final class GtlUITests: XCTestCase {
         } else {
             hungarian.tap()
         }
-        XCTAssertTrue(app.staticTexts["Usage"].waitForExistence(timeout: 5) || app.staticTexts["Használat"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Usage type"].waitForExistence(timeout: 5) || app.staticTexts["Használati mód"].waitForExistence(timeout: 5))
     }
 
     func testMapHudAboutHelpAndCompass() {
@@ -70,10 +70,10 @@ final class GtlUITests: XCTestCase {
         } else {
             copyrightHu.tap()
         }
-        let author = app.descendants(matching: .any).containing(NSPredicate(format: "label CONTAINS %@", "2014")).firstMatch
+        let author = app.descendants(matching: .any).containing(NSPredicate(format: "label CONTAINS %@", "2026")).firstMatch
         if !author.waitForExistence(timeout: 3) {
             let lines = app.debugDescription.split(separator: "\n").filter {
-                $0.contains("opyright") || $0.contains("2014") || $0.contains("Szerző") || $0.contains("Kő") || $0.contains("bitbucket")
+                $0.contains("opyright") || $0.contains("2026") || $0.contains("Szerző") || $0.contains("Kő") || $0.contains("bitbucket")
             }
             XCTFail(lines.joined(separator: "\n"))
         }

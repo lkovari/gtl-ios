@@ -3,116 +3,165 @@ import UIKit
 
 struct SettingsScreen: View {
     @Bindable var model: TrackerModel
+    @State private var expanded: Set<String> = []
+
     var body: some View {
-        Form {
-            Section(L10n.text("Usage", "Használat")) {
-                Picker(L10n.text("Usage", "Használat"), selection: Binding(
-                    get: { model.settings.usageType },
-                    set: { model.setUsage($0) }
-                )) {
-                    ForEach(UsageType.selectable, id: \.self) { usage in
-                        Text(label(usage)).tag(usage)
+        ScrollView {
+            VStack(spacing: 8) {
+                usageCard
+                section(L10n.text("Appearance", "Megjelenés"), id: "appearance") {
+                    toggle(L10n.text("Use downloaded map", "Letöltött térkép"), \.useOfflineMap)
+                    toggle(L10n.text("Simplify track on map", "Útvonal egyszerűsítése"), \.optimizationActive)
+                    toggle(L10n.text("Show last logged route", "Utolsó útvonal"), \.showLastTrackOnMap)
+                    toggle(L10n.text("Keep whole track", "Teljes útvonal"), \.keepWholeTrackOnScreen)
+                    toggle(L10n.text("Speed scale always open", "Sebességskála mindig nyitva"), \.speedLegendAlwaysOpen)
+                    toggle(L10n.text("Show accuracy marker", "Pontosság jelölő"), \.showAccuracyMarker)
+                    toggle(L10n.text("Show fix cloud", "Pozíciófelhő"), \.showFixCloud)
+                }
+                if model.settings.useOfflineMap {
+                    section(OfflineLayerToggles.title(model.settings), id: "offline") {
+                        OfflineLayerToggles(model: model)
                     }
                 }
-                Picker(L10n.text("Units", "Mértékegység"), selection: Binding(
-                    get: { model.settings.measurementSystem },
-                    set: { value in model.updateSettings { $0.measurementSystem = value } }
-                )) {
-                    Text("Metric").tag(MeasurementSystem.METRIC)
-                    Text("Imperial").tag(MeasurementSystem.IMPERIAL)
-                    Text("ICAO").tag(MeasurementSystem.ICAO)
-                }
-            }
-            Section(L10n.text("Appearance", "Megjelenés")) {
-                Toggle(L10n.text("Use downloaded map", "Letöltött térkép"), isOn: Binding(
-                    get: { model.settings.useOfflineMap },
-                    set: { value in model.updateSettings { $0.useOfflineMap = value } }
-                ))
-                Toggle(L10n.text("Simplify track on map", "Útvonal egyszerűsítése"), isOn: Binding(
-                    get: { model.settings.optimizationActive },
-                    set: { value in model.updateSettings { $0.optimizationActive = value } }
-                ))
-                Toggle(L10n.text("Show last logged route", "Utolsó útvonal"), isOn: Binding(
-                    get: { model.settings.showLastTrackOnMap },
-                    set: { value in model.updateSettings { $0.showLastTrackOnMap = value } }
-                ))
-                Toggle(L10n.text("Keep whole track", "Teljes útvonal"), isOn: Binding(
-                    get: { model.settings.keepWholeTrackOnScreen },
-                    set: { value in model.updateSettings { $0.keepWholeTrackOnScreen = value } }
-                ))
-                Toggle(L10n.text("Speed scale always open", "Sebességskála mindig nyitva"), isOn: Binding(
-                    get: { model.settings.speedLegendAlwaysOpen },
-                    set: { value in model.updateSettings { $0.speedLegendAlwaysOpen = value } }
-                ))
-                Toggle(L10n.text("Show accuracy marker", "Pontosság jelölő"), isOn: Binding(
-                    get: { model.settings.showAccuracyMarker },
-                    set: { value in model.updateSettings { $0.showAccuracyMarker = value } }
-                ))
-                Toggle(L10n.text("Show fix cloud", "Pozíciófelhő"), isOn: Binding(
-                    get: { model.settings.showFixCloud },
-                    set: { value in model.updateSettings { $0.showFixCloud = value } }
-                ))
-            }
-            if model.effectiveOffline {
-                OfflineLayerControls(model: model)
-            }
-            Section {
-                Toggle(L10n.text("Keep screen on while logging", "Képernyő bekapcsolva naplózás közben"), isOn: Binding(
-                    get: { model.settings.keepScreenOnWhileLogging },
-                    set: { value in model.updateSettings { $0.keepScreenOnWhileLogging = value } }
-                ))
-                Toggle(L10n.text("Smooth recorded track", "Simított nyomvonal"), isOn: Binding(
-                    get: { model.settings.trackSmoothingEnabled },
-                    set: { value in model.updateSettings { $0.trackSmoothingEnabled = value } }
-                ))
-                Toggle(L10n.text("Hold still when stopped", "Megálláskor tartás"), isOn: Binding(
-                    get: { model.settings.stationaryLockEnabled },
-                    set: { value in model.updateSettings { $0.stationaryLockEnabled = value } }
-                ))
-                VStack(alignment: .leading) {
-                    Text(L10n.text("Recording density", "Rögzítési sűrűség"))
-                    Slider(value: Binding(
-                        get: { Double(model.settings.recordingDensityValue) },
-                        set: { value in model.updateSettings { $0.recordingDensityValue = Float(value) } }
-                    ), in: 0...1)
-                }
-            } header: {
-                Text(L10n.text("Recording", "Rögzítés"))
-            } footer: {
-                Text(L10n.text(
-                    "Keep screen on leaves the display awake. A locked screen still records when Location is Always, and the blue indicator stays until Stop. While Using the App, locking the screen stops new points.",
-                    "A képernyő bekapcsolva hagyása ébren tartja a kijelzőt. Zárolt képernyőn a rögzítés akkor megy tovább, ha a Helyzet Mindig, és a kék jelző a Stopig látszik. Az app használata közben a zárolás megállítja az új pontokat."
-                ))
-            }
-            if model.altimeterAvailable {
-                Section(L10n.text("Barometer", "Barométer")) {
-                    Toggle(L10n.text("Auto-calibrate", "Automatikus kalibrálás"), isOn: Binding(
-                        get: { model.settings.autoCalibrateBaroEnabled },
-                        set: { value in model.updateSettings { $0.autoCalibrateBaroEnabled = value } }
-                    ))
+                section(L10n.text("Recording", "Rögzítés"), id: "recording") {
+                    toggle(L10n.text("Keep screen on while logging", "Képernyő bekapcsolva naplózás közben"), \.keepScreenOnWhileLogging)
+                    toggle(L10n.text("Smooth recorded track", "Simított nyomvonal"), \.trackSmoothingEnabled)
+                    toggle(L10n.text("Hold still when stopped", "Megálláskor tartás"), \.stationaryLockEnabled)
                     VStack(alignment: .leading) {
-                        Text("QNH \(String(format: "%.1f", model.settings.qnhHpa)) hPa")
+                        Text(L10n.text("Recording density", "Rögzítési sűrűség"))
                         Slider(value: Binding(
-                            get: { Double(model.settings.qnhHpa) },
-                            set: { value in model.updateSettings { $0.qnhHpa = Float(value) } }
-                        ), in: Double(BaroAltitude.minQnhHpa)...Double(BaroAltitude.maxQnhHpa))
+                            get: { Double(model.settings.recordingDensityValue) },
+                            set: { value in model.updateSettings { $0.recordingDensityValue = Float(value) } }
+                        ), in: 0...1)
                     }
-                    Button(L10n.text("Calibrate", "Kalibrálás")) {
-                        if let pressure = model.pressureHpa, let gps = model.altitude {
-                            model.updateSettings { $0.baroPressureOffsetHpa = BaroAltitude.offsetHpa(pressureHpa: pressure, gpsMeters: gps, qnhHpa: $0.qnhHpa) }
+                    Text(L10n.text(
+                        "Keep screen on leaves the display awake. A locked screen still records when Location is Always, and the blue indicator stays until Stop. While Using the App, locking the screen stops new points.",
+                        "A képernyő bekapcsolva hagyása ébren tartja a kijelzőt. Zárolt képernyőn a rögzítés akkor megy tovább, ha a Helyzet Mindig, és a kék jelző a Stopig látszik. Az app használata közben a zárolás megállítja az új pontokat."
+                    ))
+                    .font(.footnote)
+                    .opacity(0.7)
+                }
+                if model.altimeterAvailable {
+                    section(L10n.text("Barometer", "Barométer"), id: "barometer") {
+                        toggle(L10n.text("Auto-calibrate", "Automatikus kalibrálás"), \.autoCalibrateBaroEnabled)
+                        VStack(alignment: .leading) {
+                            Text("QNH \(String(format: "%.1f", model.settings.qnhHpa)) hPa")
+                            Slider(value: Binding(
+                                get: { Double(model.settings.qnhHpa) },
+                                set: { value in model.updateSettings { $0.qnhHpa = Float(value) } }
+                            ), in: Double(BaroAltitude.minQnhHpa)...Double(BaroAltitude.maxQnhHpa))
                         }
-                    }
-                    Button(L10n.text("Reset", "Visszaállítás")) {
-                        model.updateSettings { $0.baroPressureOffsetHpa = 0 }
+                        HStack(spacing: 12) {
+                            Button(L10n.text("Calibrate", "Kalibrálás")) {
+                                if let pressure = model.pressureHpa, let gps = model.altitude {
+                                    model.updateSettings { $0.baroPressureOffsetHpa = BaroAltitude.offsetHpa(pressureHpa: pressure, gpsMeters: gps, qnhHpa: $0.qnhHpa) }
+                                }
+                            }
+                            Button(L10n.text("Reset", "Visszaállítás")) {
+                                model.updateSettings { $0.baroPressureOffsetHpa = 0 }
+                            }
+                        }
+                        .buttonStyle(.bordered)
                     }
                 }
+                section(L10n.text("Privacy policy", "Adatvédelmi nyilatkozat"), id: "privacy") {
+                    Link(L10n.text("Privacy policy", "Adatvédelmi nyilatkozat"), destination: AppLinks.privacyPolicy)
+                        .foregroundStyle(GtlColor.titleMagenta)
+                }
             }
-            Section {
-                Link(L10n.text("Privacy policy", "Adatvédelmi nyilatkozat"), destination: AppLinks.privacyPolicy)
-            }
+            .padding(16)
         }
+        .background { GtlBackground() }
         .navigationTitle(L10n.text("Settings", "Beállítások"))
         .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private var usageCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text(L10n.text("Usage type", "Használati mód"))
+                .font(.title3.weight(.semibold))
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 3), spacing: 14) {
+                ForEach(UsageType.selectable, id: \.self) { usage in
+                    let selected = model.settings.usageType == usage
+                    Button {
+                        model.setUsage(usage)
+                    } label: {
+                        VStack(spacing: 4) {
+                            Image(systemName: icon(usage))
+                                .font(.title3)
+                                .frame(height: 24)
+                            Text(label(usage))
+                                .font(.subheadline)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.7)
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(selected ? AnyShapeStyle(GtlColor.titleMagenta) : AnyShapeStyle(.primary))
+                    .accessibilityIdentifier("settings.usage.\(usage.rawValue)")
+                    .accessibilityAddTraits(selected ? .isSelected : [])
+                }
+            }
+            HStack(spacing: 8) {
+                Text(L10n.text("Units", "Mértékegység"))
+                    .font(.headline)
+                unitChip("Metric", .METRIC)
+                unitChip("Imperial", .IMPERIAL)
+                unitChip("ICAO", .ICAO)
+            }
+        }
+        .cardSurface()
+    }
+
+    private func unitChip(_ title: String, _ system: MeasurementSystem) -> some View {
+        let selected = model.settings.measurementSystem == system
+        return Button {
+            model.updateSettings { $0.measurementSystem = system }
+        } label: {
+            Text(title)
+                .font(.subheadline.weight(selected ? .semibold : .regular))
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+                .padding(.horizontal, 12)
+                .frame(minHeight: 32)
+                .background(selected ? GtlColor.titleMagenta.opacity(0.22) : Color.clear, in: Capsule())
+                .overlay(Capsule().strokeBorder(selected ? GtlColor.titleMagenta : Color.secondary.opacity(0.5)))
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("settings.units.\(title)")
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+
+    private func icon(_ usage: UsageType) -> String {
+        switch usage {
+        case .AIRCRAFT: return "airplane"
+        case .WATERCRAFT: return "ferry.fill"
+        case .FOUR_WHEELERS: return "car.fill"
+        case .TWO_WHEELERS: return "motorcycle.fill"
+        case .BICYCLE: return "bicycle"
+        case .RUNNER: return "figure.run"
+        default: return "location.fill"
+        }
+    }
+
+    private func section<Content: View>(_ title: String, id: String, @ViewBuilder content: @escaping () -> Content) -> some View {
+        AccordionCard(title: title, expanded: expanded.contains(id)) {
+            if expanded.contains(id) { expanded.remove(id) } else { expanded.insert(id) }
+        } content: {
+            VStack(alignment: .leading, spacing: 12) {
+                content()
+            }
+        }
+    }
+
+    private func toggle(_ title: String, _ key: WritableKeyPath<GtlSettings, Bool>) -> some View {
+        Toggle(title, isOn: Binding(
+            get: { model.settings[keyPath: key] },
+            set: { value in model.updateSettings { $0[keyPath: key] = value } }
+        ))
     }
 
     private func label(_ usage: UsageType) -> String {
@@ -439,8 +488,8 @@ struct HelpScreen: View {
                 }
                 section(L10n.text("Settings", "Beállítások"), id: "settings") {
                     Text(L10n.text(
-                        "Usage writes a preset for units, smoothing, density, and map simplify. Aircraft and watercraft default to ICAO; the others default to metric. You can change any control afterwards. Keep screen on while logging is under Recording. It keeps the display awake and does not replace Location set to Always. OSM and Turistautak layer switches are on the map layers button, and the same switches are in Settings while that map is in use. The barometer section appears only if this phone has a pressure sensor. Apple Maps is standard, satellite, or hybrid, each with realistic elevation.",
-                        "A használat előbeállítást ír a mértékegységre, a simításra, a sűrűségre és a térképi egyszerűsítésre. Repülőnél és hajónál az alap az ICAO, a többinél a metrikus. Utána bármelyik kapcsoló módosítható. A képernyő bekapcsolva hagyása a Rögzítés alatt van. Ébren tartja a kijelzőt, és nem helyettesíti a Helyzet: Mindig beállítást. Az OSM és a Turistautak rétegek a térkép réteg gombján vannak, és ugyanazok a Beállításokban, amíg az a térkép van használatban. A barométer csak akkor látszik, ha van nyomásszenzor. Az Apple térkép standard, műhold vagy hibrid, mindegyik valós domborzattal."
+                        "Usage writes a preset for units, smoothing, density, and map simplify. Aircraft and watercraft default to ICAO; the others default to metric. You can change any control afterwards. Keep screen on while logging is under Recording. It keeps the display awake and does not replace Location set to Always. Usage type and Units are always on screen at the top of Settings. Every other group sits under its own heading: tap a heading to open it, and several can stay open at once. OSM and Turistautak layer switches are on the map layers button, and the same group appears in Settings while Use downloaded map is on. The barometer group appears only if this phone has a pressure sensor. Apple Maps is standard, satellite, or hybrid, each with realistic elevation.",
+                        "A használat előbeállítást ír a mértékegységre, a simításra, a sűrűségre és a térképi egyszerűsítésre. Repülőnél és hajónál az alap az ICAO, a többinél a metrikus. Utána bármelyik kapcsoló módosítható. A képernyő bekapcsolva hagyása a Rögzítés alatt van. Ébren tartja a kijelzőt, és nem helyettesíti a Helyzet: Mindig beállítást. A használati mód és a mértékegység a Beállítások tetején mindig látszik. A többi csoport saját címsor alatt van: a címsorra koppintva nyílik le, és egyszerre több is nyitva lehet. Az OSM és a Turistautak rétegek a térkép réteg gombján vannak, és ugyanez a csoport a Beállításokban akkor látszik, ha a Letöltött térkép be van kapcsolva. A barométer csoport csak akkor látszik, ha van nyomásszenzor. Az Apple térkép standard, műhold vagy hibrid, mindegyik valós domborzattal."
                     ))
                 }
                 section(L10n.text("Track logging", "Nyomvonal rögzítés"), id: "logging") {
@@ -475,8 +524,8 @@ struct HelpScreen: View {
                 }
                 section(L10n.text("OSM map options", "OSM térkép opciók"), id: "osm") {
                     Text(L10n.text(
-                        "These switches are on the map layers button and in Settings when a downloaded OSM region is on Map. Buildings, POI, public transport, cycleways, and parks. Terrain relief stays off unless elevation files sit next to the map. Official downloads do not include hillshade.",
-                        "Ezek a kapcsolók a térkép réteg gombján és a Beállításokban vannak, ha egy OSM-régió van a Térképen. Épületek, POI, tömegközlekedés, kerékpárutak és parkok. A domborzat kikapcsolva marad, amíg nincsenek magasságfájlok a térkép mellett. A hivatalos letöltésben nincs domborzatárnyékolás."
+                        "These switches are on the map layers button when a downloaded OSM region is on Map, and in Settings while Use downloaded map is on. Buildings, POI, public transport, cycleways, and parks. Terrain relief stays off unless elevation files sit next to the map. Official downloads do not include hillshade.",
+                        "Ezek a kapcsolók a térkép réteg gombján vannak, ha egy OSM-régió van a Térképen, a Beállításokban pedig akkor, ha a Letöltött térkép be van kapcsolva. Épületek, POI, tömegközlekedés, kerékpárutak és parkok. A domborzat kikapcsolva marad, amíg nincsenek magasságfájlok a térkép mellett. A hivatalos letöltésben nincs domborzatárnyékolás."
                     ))
                 }
                 section(L10n.text("Turistautak options", "Turistautak opciók"), id: "tuhu") {
@@ -547,7 +596,7 @@ struct AboutScreen: View {
                     expanded = expanded == "app" ? "" : "app"
                 } content: {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("2.0.15  ·  com.lkovari.mobile.apps.gtl")
+                        Text("\(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0.1")  ·  com.lkovari.mobile.apps.gtl")
                             .onTapGesture { model.tapVersion() }
                         Text("\(L10n.text("Device", "Készülék")): \(UIDevice.current.name)")
                     }
@@ -606,12 +655,15 @@ struct AboutScreen: View {
                 AccordionCard(title: L10n.text("Original repository", "Eredeti tároló"), expanded: expanded == "repo") {
                     expanded = expanded == "repo" ? "" : "repo"
                 } content: {
-                    aboutLink("https://bitbucket.org/laszlokovary/gtl-e/src/master/", "https://bitbucket.org/laszlokovary/gtl-e/src/master/")
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(L10n.text("(before the AI. era)", "(az AI. korszak előtt)"))
+                        aboutLink("https://bitbucket.org/laszlokovary/gtl-e/src/master/", "https://bitbucket.org/laszlokovary/gtl-e/src/master/")
+                    }
                 }
                 AccordionCard(title: L10n.text("Copyright", "Szerzői jog"), expanded: expanded == "copyright") {
                     expanded = expanded == "copyright" ? "" : "copyright"
                 } content: {
-                    Text("Copyright © 2014 - 2026 by László Kővári")
+                    Text("Copyright © 2026 by László Kővári")
                         .accessibilityIdentifier("about.author")
                 }
             }
@@ -678,7 +730,6 @@ struct AccordionCard<Content: View>: View {
     var expanded: Bool
     var onToggle: () -> Void
     @ViewBuilder var content: () -> Content
-    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -700,12 +751,25 @@ struct AccordionCard<Content: View>: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(scheme == .dark ? GtlColor.cockpitPanel : Color.white.opacity(0.94))
-        .foregroundStyle(scheme == .dark ? GtlColor.moonCream : GtlColor.nightInk)
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .cardSurface()
     }
+}
+
+private struct CardSurface: ViewModifier {
+    @Environment(\.colorScheme) private var scheme
+
+    func body(content: Content) -> some View {
+        content
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(scheme == .dark ? GtlColor.cockpitPanel : Color.white.opacity(0.94))
+            .foregroundStyle(scheme == .dark ? GtlColor.moonCream : GtlColor.nightInk)
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+}
+
+extension View {
+    func cardSurface() -> some View { modifier(CardSurface()) }
 }
 
 struct LocationSettingsScreen: View {

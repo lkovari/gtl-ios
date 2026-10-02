@@ -1681,26 +1681,36 @@ struct OfflineLayerControls: View {
     @Bindable var model: TrackerModel
 
     var body: some View {
+        Section(OfflineLayerToggles.title(model.settings)) {
+            OfflineLayerToggles(model: model)
+        }
+    }
+}
+
+struct OfflineLayerToggles: View {
+    @Bindable var model: TrackerModel
+
+    static func title(_ settings: GtlSettings) -> String {
+        settings.selectedMapId == OsmCatalog.tuhuId ? "Turistautak.hu" : "OpenStreetMap"
+    }
+
+    var body: some View {
         if model.settings.selectedMapId == OsmCatalog.tuhuId {
-            Section("Turistautak.hu") {
-                toggle(L10n.text("Trail blazes", "Jelzések"), key: \.tuhu.blazes)
-                toggle(L10n.text("Emphasize paths", "Utak kiemelése"), key: \.tuhu.paths)
-                toggle(L10n.text("Contour lines", "Szintvonalak"), key: \.tuhu.contours)
-                toggle(L10n.text("Minor contours", "Mellékszintvonalak"), key: \.tuhu.contoursMinor)
-                toggle(L10n.text("Hiking POI", "Turista POI"), key: \.tuhu.hikePoi)
-                toggle(L10n.text("Protected areas", "Védett területek"), key: \.tuhu.parks)
-                toggle(L10n.text("Urban POI", "Városi POI"), key: \.tuhu.urbanPoi)
-                hillshade(\.tuhu.hillshading)
-            }
+            toggle(L10n.text("Trail blazes", "Jelzések"), key: \.tuhu.blazes)
+            toggle(L10n.text("Emphasize paths", "Utak kiemelése"), key: \.tuhu.paths)
+            toggle(L10n.text("Contour lines", "Szintvonalak"), key: \.tuhu.contours)
+            toggle(L10n.text("Minor contours", "Mellékszintvonalak"), key: \.tuhu.contoursMinor)
+            toggle(L10n.text("Hiking POI", "Turista POI"), key: \.tuhu.hikePoi)
+            toggle(L10n.text("Protected areas", "Védett területek"), key: \.tuhu.parks)
+            toggle(L10n.text("Urban POI", "Városi POI"), key: \.tuhu.urbanPoi)
+            hillshade(\.tuhu.hillshading)
         } else {
-            Section("OpenStreetMap") {
-                toggle(L10n.text("Buildings", "Épületek"), key: \.osm.buildings)
-                toggle("POI", key: \.osm.poi)
-                toggle(L10n.text("Public transport", "Tömegközlekedés"), key: \.osm.transit)
-                toggle(L10n.text("Highlight cycleways", "Kerékpárutak"), key: \.osm.cycleways)
-                toggle(L10n.text("Parks", "Parkok"), key: \.osm.parks)
-                hillshade(\.osm.hillshading)
-            }
+            toggle(L10n.text("Buildings", "Épületek"), key: \.osm.buildings)
+            toggle("POI", key: \.osm.poi)
+            toggle(L10n.text("Public transport", "Tömegközlekedés"), key: \.osm.transit)
+            toggle(L10n.text("Highlight cycleways", "Kerékpárutak"), key: \.osm.cycleways)
+            toggle(L10n.text("Parks", "Parkok"), key: \.osm.parks)
+            hillshade(\.osm.hillshading)
         }
     }
 

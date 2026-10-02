@@ -19,7 +19,7 @@ The Xcode project is `gtl.xcodeproj`. Sources live in `gtl/`. The shared scheme 
 | Display name | GPS Track Logger |
 | Hungarian home-screen name | GTL GPS útvonal napló |
 | Bundle identifier | `com.lkovari.mobile.apps.gtl` |
-| Version | 2.0.15 |
+| Version | 1.0.1 |
 | Build | 33 |
 | Devices | iPhone only, portrait |
 | Languages | English and Hungarian, following the system language |
@@ -124,7 +124,7 @@ Under a hairline, elapsed time and the odometer sit beside time moving and waiti
 
 The elevation profile appears only after two points have a GPS altitude. It is a carmine line with a soft fill under it, and a dot on the latest point. The low and high altitudes of the plot sit on the left. Two faint horizontal guides and a baseline sit behind the line. When pressure samples exist, a dashed teal line, cyan in dark mode, is barometric altitude, and a short legend names GPS altitude and Baro. Without those two altitudes the profile is not drawn, so an empty chart does not fill the screen.
 
-Settings cover usage (Aircraft, Watercraft, Car, Motorbike, Bicycle, Run/Hike), metric / imperial / ICAO units, appearance, recording density, the barometer when the phone has one, and the layer switches for the map that is in use.
+Settings is laid out like About and Help. The top card is always visible: Usage type as six icons with their names (Aircraft, Watercraft, Car, Motorbike, Bicycle, Run/Hike), the chosen one in magenta, and under them Units as three chips (Metric, Imperial, ICAO). Below that card, each group has a heading that opens on a tap, and several can be open at once: Appearance, Recording with the recording density, Barometer when the phone has one, and Privacy policy. The OpenStreetMap or Turistautak.hu layer switches are a group of their own, shown only while Use downloaded map is on.
 
 Saved tracks can be shared as GPX or KMZ, shown on the map, or deleted.
 
@@ -183,7 +183,7 @@ Place search on an offline map uses an on-device index. Queries start at 3 chara
 
 The privacy manifest declares precise location for app functionality. Required Reason API reasons: UserDefaults `CA92.1`, file timestamp `C617.1`, and disk space `E174.1`. The app does not track. `ITSAppUsesNonExemptEncryption` is false.
 
-The logged route, acceleration, and lean angle stay in SQLite on the phone. An iPhone backup includes that database. Downloaded map files are excluded from backup. The map, search, a route, and an address send Apple the coordinate or map area needed for that request. An OSM or Turistautak download lets that server see the IP address and the requested file. The logged track is not uploaded to the developer’s server. The first screen and the Help usage section say the same thing.
+The logged route, acceleration, and lean angle stay in SQLite on the phone. An iPhone backup includes that database. Downloaded map files are excluded from backup. The map, search, a route, and an address send Apple the coordinate or map area needed for that request. An OSM or Turistautak download lets that server see the IP address and the requested file. Place search on a downloaded map runs on the phone. The error log stays on the phone and is not sent anywhere. The logged track is not uploaded to the developer’s server. The first screen and the Help usage section say the same thing.
 
 Privacy policy: `https://lkovari.github.io/KLHome/assets/bigfiles/gtl-ios-private-policy.html`. Use that same address as the App Store Connect Support URL. The source is `docs/gtl-ios-private-policy.html`; copy it to the KLHome site before submission. About also shows `laszlo.kovary@gmail.com`. The link is on the first screen, in Settings, and in Help.
 
@@ -265,6 +265,35 @@ The offline OSM corner used to say `© OpenStreetMap`. ODbL asks for `© OpenStr
 The Turistautak corner is still `© Turistautak.hu`. About adds that their terms require a clear reference to the site wherever the data is shown, and that the file is saved on this phone for the user’s own use. There is a link to `https://turistautak.hu` and to the legal notice. The download stays in the build, because the terms allow saving for personal use when the reference is visible.
 
 About gained a MapLibre row: MapLibre Native, BSD 2-Clause, and the copyright lines from the 6.31.0 package (MapLibre contributors, MapTiler.com, Mapbox). Binary distribution requires that text. Support is new: the privacy policy link and `laszlo.kovary@gmail.com`. The Bitbucket repository row remains. It is not the support contact. The App Store Connect Support URL is the privacy policy page, not the repository root.
+
+### Settings, About, and version 1.0.1
+
+Settings used to be one long system form. It is now built like About and Help: cards on the app background, each group under its own heading.
+
+- The top card is always open and holds Usage type and Units, so both stay visible however the rest is folded. Usage type is a grid of six icons with their names, three to a row; a tap selects one and it turns magenta. Units is a row of three chips, Metric, Imperial, and ICAO, with the chosen one filled.
+- Appearance, Recording, Barometer, and Privacy policy are headings. A tap opens a group, another tap closes it. Several groups can be open at once; About and Help still open one at a time. Every group starts closed each time Settings opens.
+- The OpenStreetMap group, or Turistautak.hu when that map is selected, is shown only while Use downloaded map is on. It used to depend on a downloaded file being in use. Turning the switch off hides the group. The map layers button on the Map tab is unchanged.
+- Barometer still appears only on a phone with a pressure sensor. The switches, sliders, and buttons do what they did before.
+
+About changed in three places:
+
+- App info shows version 1.0.1. The line reads the version from the app bundle, so it follows `MARKETING_VERSION`, which is now 1.0.1 in every build configuration. The build number stays 33.
+- Original repository now has a one-line note on when that code base dates from, and the Bitbucket address under it in magenta.
+- Copyright reads `Copyright © 2026 by László Kővári`. The 2014 start year is gone, here and in the footer of the privacy policy page.
+
+The privacy policy page, `docs/gtl-ios-private-policy.html`, was brought up to date in English and Hungarian. It is dated 2 October 2026 and names version 1.0.1. New or rewritten:
+
+- Location: the first request is While Using the App; the sheet before the Always prompt; what a locked screen does under each permission; no background location outside a logging session; Precise Location; the compass heading is not stored.
+- Data on the iPhone: the full list of stored fields, including speed, bearing, accuracy, pressure, and usage type.
+- Error log: what a line contains, the size limit, that it never leaves the phone, and how the error log and the stored-point table are opened.
+- Apple Maps: place search on a downloaded map runs on the phone; a route and an address still go to Apple.
+- Offline map downloads: the Mapsforge host by name, the question before a download on mobile data, and that drawing a downloaded map makes no network request.
+- Your choices: withdrawing a permission, and deleting data on the phone.
+- What we do not do: no crash report or usage statistics.
+
+Copy the file to the KLHome site again, or the in-app link still opens the older text.
+
+The UI test looks for 2026 in the copyright line instead of 2014, and for the Usage type heading in Settings.
 
 ### What stayed the same
 
