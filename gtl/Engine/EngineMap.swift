@@ -1461,3 +1461,39 @@ enum MapSearch {
         }
     }
 }
+
+struct TrackThumbnailPoint: Equatable {
+    var x: Double
+    var y: Double
+}
+
+enum TrackThumbnail {
+    static let maxPoints = 160
+
+    static func normalized(_ points: [GeoPoint], maxPoints: Int = maxPoints) -> [TrackThumbnailPoint] {
+        guard !points.isEmpty else { return [] }
+        let step = max(1, Int((Double(points.count) / Double(max(2, maxPoints))).rounded(.up)))
+        var picked = stride(from: 0, to: points.count, by: step).map { points[$0] }
+        if (points.count - 1) % step != 0, let last = points.last { picked.append(last) }
+        let projected = picked.map { point -> TrackThumbnailPoint in
+            let latitude = min(85, max(-85, point.latitude)) * .pi / 180
+            return TrackThumbnailPoint(x: point.longitude * .pi / 180, y: -log(tan(.pi / 4 + latitude / 2)))
+        }
+        let minX = projected.map(\.x).min() ?? 0
+        let maxX = projected.map(\.x).max() ?? 0
+        let minY = projected.map(\.y).min() ?? 0
+        let maxY = projected.map(\.y).max() ?? 0
+        let span = max(maxX - minX, maxY - minY)
+        guard span > 0 else { return projected.map { _ in TrackThumbnailPoint(x: 0.5, y: 0.5) } }
+        let offsetX = (1 - (maxX - minX) / span) / 2
+        let offsetY = (1 - (maxY - minY) / span) / 2
+        return projected.map {
+            TrackThumbnailPoint(x: ($0.x - minX) / span + offsetX, y: ($0.y - minY) / span + offsetY)
+        }
+    }
+}
+
+struct TrackPreview: Equatable {
+    var outline: [TrackThumbnailPoint]
+    var stats: TrackStats
+}

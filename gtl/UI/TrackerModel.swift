@@ -54,6 +54,7 @@ final class TrackerModel {
     var headingUp = true
     var tiltResetToken = 0
     var sessions: [TrackSession] = []
+    var trackPreviews: [Int64: TrackPreview] = [:]
     var trackPoints: [TrackVertex] = []
     var speedRuns: [SpeedRun] = []
     var liveTail: SpeedRun?
@@ -479,6 +480,13 @@ final class TrackerModel {
             events = []
         }
         return GpsEventsDump.text(session: session, events: events)
+    }
+
+    func loadPreview(for session: TrackSession) async {
+        guard let database else { return }
+        if trackPreviews[session.id] != nil && session.stoppedAt != nil { return }
+        guard let preview = try? await database.preview(sessionId: session.id) else { return }
+        trackPreviews[session.id] = preview
     }
 
     func showSession(_ id: Int64) {
@@ -1304,7 +1312,10 @@ final class TrackerModel {
     }
 
     private func reloadSessions() async {
-        sessions = (try? await database?.sessions()) ?? []
+        let fresh = (try? await database?.sessions()) ?? []
+        let unchanged = Set(fresh.filter { sessions.contains($0) }.map(\.id))
+        trackPreviews = trackPreviews.filter { unchanged.contains($0.key) }
+        sessions = fresh
     }
 
     private func loadSession(_ id: Int64) async {

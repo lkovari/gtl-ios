@@ -24,6 +24,31 @@ final class EngineTests: XCTestCase {
         XCTAssertEqual(DouglasPeucker.simplify(points, toleranceMeters: 20).count, 3)
     }
 
+    func testTrackThumbnailFitsUnitSquareAndKeepsAspect() {
+        let points = [
+            GeoPoint(latitude: 47.0, longitude: 19.0),
+            GeoPoint(latitude: 47.0, longitude: 19.2),
+            GeoPoint(latitude: 47.05, longitude: 19.2)
+        ]
+        let outline = TrackThumbnail.normalized(points)
+        XCTAssertEqual(outline.count, 3)
+        XCTAssertEqual(outline[0].x, 0, accuracy: 1e-9)
+        XCTAssertEqual(outline[1].x, 1, accuracy: 1e-9)
+        XCTAssertGreaterThan(outline[0].y, outline[2].y)
+        XCTAssertEqual((outline[0].y + outline[2].y) / 2, 0.5, accuracy: 1e-9)
+        XCTAssertLessThan(outline[0].y - outline[2].y, 0.5)
+    }
+
+    func testTrackThumbnailDownsamplesAndKeepsEnds() {
+        let points = (0..<1000).map { GeoPoint(latitude: 47 + Double($0) * 0.0001, longitude: 19) }
+        let outline = TrackThumbnail.normalized(points, maxPoints: 100)
+        XCTAssertLessThanOrEqual(outline.count, 101)
+        XCTAssertEqual(outline.first?.y ?? 0, 1, accuracy: 1e-9)
+        XCTAssertEqual(outline.last?.y ?? 1, 0, accuracy: 1e-9)
+        XCTAssertEqual(TrackThumbnail.normalized([points[0]]), [TrackThumbnailPoint(x: 0.5, y: 0.5)])
+        XCTAssertTrue(TrackThumbnail.normalized([]).isEmpty)
+    }
+
     func testToleranceClamp() {
         XCTAssertEqual(DouglasPeucker.clampTolerance(19.5), 20)
         XCTAssertEqual(DouglasPeucker.clampTolerance(0), 1)

@@ -154,6 +154,23 @@ actor TrackDatabase {
         }
     }
 
+    func preview(sessionId: Int64) throws -> TrackPreview {
+        let events = try query("SELECT timestamp, latitude, longitude, altitude, speed, event_kind FROM gps_events WHERE session_id = ? ORDER BY timestamp ASC;", bindings: [.int(sessionId)]) { statement in
+            TrackLogEvent(
+                timestampMillis: sqlite3_column_int64(statement, 0),
+                latitude: sqlite3_column_double(statement, 1),
+                longitude: sqlite3_column_double(statement, 2),
+                altitude: optionalDouble(statement, 3),
+                speedMps: optionalDouble(statement, 4).map { Float($0) },
+                kind: EventKind(rawValue: text(statement, 5)) ?? .MOVE
+            )
+        }
+        return TrackPreview(
+            outline: TrackThumbnail.normalized(TrackLogExport.path(events).map { $0.point() }),
+            stats: TrackStatsCalculator.compute(TrackLogExport.samplesForStats(events))
+        )
+    }
+
     func deleteSession(id: Int64) throws {
         try run("DELETE FROM track_sessions WHERE id = ?;", bindings: [.int(id)])
     }

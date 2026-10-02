@@ -164,17 +164,7 @@ struct SettingsScreen: View {
         ))
     }
 
-    private func label(_ usage: UsageType) -> String {
-        switch usage {
-        case .AIRCRAFT: return L10n.text("Aircraft", "Légijármű")
-        case .WATERCRAFT: return L10n.text("Watercraft", "Vízi jármű")
-        case .FOUR_WHEELERS: return L10n.text("Car", "Autó")
-        case .TWO_WHEELERS: return L10n.text("Motorbike", "Motor")
-        case .BICYCLE: return L10n.text("Bicycle", "Kerékpár")
-        case .RUNNER: return L10n.text("Run/Hike", "Futás/Túra")
-        default: return usage.kmlLabel()
-        }
-    }
+    private func label(_ usage: UsageType) -> String { usageLabel(usage) }
 }
 
 struct MapDownloadScreen: View {
@@ -236,6 +226,18 @@ struct MapDownloadScreen: View {
     }
 }
 
+private func usageLabel(_ usage: UsageType) -> String {
+    switch usage {
+    case .AIRCRAFT: return L10n.text("Aircraft", "Légijármű")
+    case .WATERCRAFT: return L10n.text("Watercraft", "Vízi jármű")
+    case .FOUR_WHEELERS: return L10n.text("Car", "Autó")
+    case .TWO_WHEELERS: return L10n.text("Motorbike", "Motor")
+    case .BICYCLE: return L10n.text("Bicycle", "Kerékpár")
+    case .RUNNER: return L10n.text("Run/Hike", "Futás/Túra")
+    default: return usage.kmlLabel()
+    }
+}
+
 private struct GpsEventsPage: Hashable {
     var sessionId: Int64
     var text: String
@@ -250,27 +252,26 @@ struct TracksScreen: View {
     var body: some View {
         List {
             ForEach(model.sessions) { session in
-                HStack {
-                    Button {
-                        toggle(session.id)
-                    } label: {
-                        Image(systemName: selected.contains(session.id) ? "checkmark.circle.fill" : "circle")
-                    }
-                    .buttonStyle(.borderless)
-                    VStack(alignment: .leading) {
-                        Text(sessionTitle(session.startedAt))
-                        Text(session.usageType).font(.caption).foregroundStyle(.secondary)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        toggle(session.id)
-                        registerDumpTap(session)
-                    }
-                    .accessibilityIdentifier("savedTrackDate.\(session.id)")
+                TrackCard(
+                    session: session,
+                    preview: model.trackPreviews[session.id],
+                    system: model.settings.measurementSystem,
+                    selected: selected.contains(session.id)
+                )
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    toggle(session.id)
+                    registerDumpTap(session)
                 }
+                .task(id: session.stoppedAt) { await model.loadPreview(for: session) }
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
+                .listRowInsets(EdgeInsets(top: 5, leading: 14, bottom: 5, trailing: 14))
             }
         }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .background { GtlBackground() }
         .navigationTitle(L10n.text("Saved tracks", "Mentett útvonalak"))
         .navigationDestination(item: $dumpPage) { page in
             GpsEventsScreen(text: page.text)
@@ -322,9 +323,128 @@ struct TracksScreen: View {
         }
     }
 
-    private func sessionTitle(_ millis: Int64) -> String {
-        let date = Date(timeIntervalSince1970: TimeInterval(millis) / 1000)
-        return date.formatted(date: .abbreviated, time: .shortened)
+}
+
+private struct TrackCard: View {
+    var session: TrackSession
+    var preview: TrackPreview?
+    var system: MeasurementSystem
+    var selected: Bool
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        HStack(spacing: 12) {
+            TrackThumbnailView(outline: preview?.outline)
+                .frame(width: 68, height: 68)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.headline)
+                    .foregroundStyle(Color.primary)
+                    .lineLimit(1)
+                    .accessibilityIdentifier("savedTrackDate.\(session.id)")
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                statsLine
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+                .font(.title3)
+                .foregroundStyle(selected ? GtlColor.hudTeal : Color.secondary.opacity(0.5))
+        }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(scheme == .dark ? GtlColor.cockpitPanel : Color.white)
+                .shadow(color: .black.opacity(scheme == .dark ? 0.35 : 0.12), radius: 6, y: 3)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(selected ? GtlColor.hudTeal : Color.primary.opacity(0.06), lineWidth: selected ? 2 : 1)
+        )
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+
+    private static let titleFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return formatter
+    }()
+
+    private var title: String {
+        Self.titleFormatter.string(from: Date(timeIntervalSince1970: TimeInterval(session.startedAt) / 1000))
+    }
+
+    private var subtitle: String {
+        let usage = UsageType(rawValue: session.usageType).map(usageLabel) ?? session.usageType
+        guard let stats = preview?.stats, stats.pointCount > 1 else { return usage }
+        return "\(usage) · \(Units.formatDistance(stats.odometerMeters, system))"
+    }
+
+    @ViewBuilder private var statsLine: some View {
+        if let stats = preview?.stats {
+            HStack(spacing: 8) {
+                Text(duration(stats.elapsedMillis))
+                    .fontWeight(.semibold)
+                    .foregroundStyle(Color.primary)
+                Text("\(L10n.text("Avg", "Átl")):\(speed(stats.averageSpeedMps))")
+                Text("Max:\(speed(stats.maxSpeedMps))")
+            }
+            .font(.caption.monospacedDigit())
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
+        } else {
+            Text(" ").font(.caption)
+        }
+    }
+
+    private func speed(_ metersPerSecond: Float) -> String {
+        Units.hudSpeedNumber(metersPerSecond, system) + Units.hudSpeedUnit(system)
+    }
+
+    private func duration(_ millis: Int64) -> String {
+        let seconds = max(0, millis / 1000)
+        return String(format: "%d:%02d:%02d", seconds / 3600, (seconds % 3600) / 60, seconds % 60)
+    }
+}
+
+private struct TrackThumbnailView: View {
+    var outline: [TrackThumbnailPoint]?
+
+    var body: some View {
+        Canvas { context, size in
+            guard let outline, !outline.isEmpty else { return }
+            let inset: CGFloat = 9
+            let side = min(size.width, size.height) - inset * 2
+            let origin = CGPoint(x: (size.width - side) / 2, y: (size.height - side) / 2)
+            let points = outline.map { CGPoint(x: origin.x + $0.x * side, y: origin.y + $0.y * side) }
+            var path = Path()
+            path.addLines(points)
+            let stroke = StrokeStyle(lineWidth: 2.2, lineCap: .round, lineJoin: .round)
+            context.stroke(path, with: .color(GtlColor.routeMagenta.opacity(0.35)), style: StrokeStyle(lineWidth: 5, lineCap: .round, lineJoin: .round))
+            context.stroke(path, with: .color(GtlColor.routeMagenta), style: stroke)
+            if let first = points.first, let last = points.last {
+                dot(context, at: last, color: GtlColor.moonCream)
+                dot(context, at: first, color: GtlColor.hudCyan)
+            }
+        }
+        .background(
+            LinearGradient(colors: [GtlColor.cockpitPanel, GtlColor.cockpit], startPoint: .top, endPoint: .bottom)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(GtlColor.hudCyan.opacity(0.25), lineWidth: 1)
+        )
+        .accessibilityHidden(true)
+    }
+
+    private func dot(_ context: GraphicsContext, at point: CGPoint, color: Color) {
+        let rect = CGRect(x: point.x - 2.5, y: point.y - 2.5, width: 5, height: 5)
+        context.fill(Path(ellipseIn: rect), with: .color(color))
     }
 }
 

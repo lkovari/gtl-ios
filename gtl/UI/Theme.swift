@@ -13,6 +13,7 @@ enum GtlColor {
     static let cockpitPanel = Color(red: 0x10 / 255, green: 0x25 / 255, blue: 0x30 / 255)
     static let hudCyan = Color(red: 0x3E / 255, green: 0xCF / 255, blue: 0xCF / 255)
     static let moonCream = Color(red: 0xE7 / 255, green: 0xF0 / 255, blue: 0xEA / 255)
+    static let routeMagenta = Color(red: 0xFF / 255, green: 0x3D / 255, blue: 0xC4 / 255)
     static let amber = Color(red: 0xE8 / 255, green: 0xA8 / 255, blue: 0x38 / 255)
 }
 

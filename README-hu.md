@@ -444,19 +444,26 @@ A review jegyzet, sorokkal és javítással: [gtl-ios-review-hu.md](gtl-ios-revi
 
 | Fájl | Méret | App Store Connect |
 | --- | --- | --- |
-| `docs/images/app-store/iphone-6.9-inch/en/01-map.png` … `04-saved-tracks.png` | 1320×2868 PNG, RGB, alfa nélkül | Az app iOS verziója → Screenshots → 6.9" Display, angol lokalizáció. Sorrend: 01, 02, 03, 04. |
-| `docs/images/app-store/iphone-6.9-inch/hu/` ugyanaz a négy név | 1320×2868 PNG, RGB, alfa nélkül | Ugyanaz a 6.9" hely, magyar lokalizáció. |
-| `docs/images/app-store/app-icon/app-icon-1024.png` | 1024×1024 PNG, RGB, alfa nélkül, sarok nélkül | Nem külön mező. Az ikont a feltöltött build adja. Csere: a fájl menjen a `gtl/Assets.xcassets/AppIcon.appiconset/AppIcon.png` helyére. |
+| `docs/screenshots/iphone-6.9-inch/01-map.png` … `08-about.png` | 1320×2868 PNG, RGB, alfa nélkül | Az app iOS verziója → Screenshots → 6.9" Display. Sorrend: 01-től 08-ig. |
+| `docs/icon/app-icon-1024.png` | 1024×1024 PNG, RGB, alfa nélkül, sarok nélkül | Nem külön mező. Az ikont a feltöltött build adja. A fájl a `gtl/Assets.xcassets/AppIcon.appiconset/AppIcon.png` másolata. |
+| `docs/splash/splash-1320x2868.png` | 1320×2868 PNG | Nem töltődik fel. A kezdőképernyő úgy, ahogy a `LaunchScreen.storyboard` rajzolja: fekete háttér, középen a Brand kép a szélesség 62%-án. |
+| `docs/featuregraphics/feature-graphic-1024x500.png` és `feature-graphic-2048x1000.png` | 1024×500 és 2048×1000 PNG | Az App Store-ba nem töltődik fel. Montázs az ikonból, a névből és az Útvonal, a Térkép és a GPS képernyőből, Google Playre, webre vagy promócióhoz. |
 
-Egy lokalizációhoz 1–10 képernyőkép kell. Itt négy van, állóban, mert az app csak álló tájolást enged.
+Egy lokalizációhoz 1–10 képernyőkép kell. Itt nyolc van, állóban, mert az app csak álló tájolást enged.
 
-#### Mit mutat a négy kép
+#### Mit mutat a nyolc kép
 
-1. `01-map.png` — Térkép, naplózás, sebesség szerint színezett vonal, HUD, észak-tárcsa.
-2. `02-route.png` — A fájl még a régi sorlistát és a keretes magassági vonalat mutatja. A futó Útvonal fül a sebesség számlapja, az út adatai és a magassági profil az [Útvonal](#útvonal) rész szerint. Feltöltés előtt ezt a képet újra kell venni.
-3. `03-compass.png` — MAG / TRUE és a számlap.
-4. `04-saved-tracks.png` — Mentett útvonalak, Térképen, GPX, KMZ, Törlés.
+1. `01-map.png` — Térkép, sebesség szerint színezett nyomvonal, sebesség-jelmagyarázat, észak-tárcsa.
+2. `02-route.png` — Útvonal: a sebesség számlapja, az út adatai és a magassági profil.
+3. `03-gps.png` — GPS: szélesség, hosszúság, pontosság, magasság, a fix kora.
+4. `04-compass.png` — MAG / TRUE és a számlap.
+5. `05-offline-maps.png` — Offline térképek: Turistautak.hu és az OpenStreetMap országlistája.
+6. `06-saved-tracks.png` — Mentett útvonalak az útvonal kis rajzával, távolsággal, idővel, átlag- és csúcssebességgel, alul Térképen, GPX, KMZ, Törlés.
+7. `07-settings.png` — Beállítások: használati mód és mértékegység.
+8. `08-about.png` — Névjegy.
 
-Az angol és a magyar sor ugyanazt a négy képernyőt mondja, a felirat a nyelv. A kezdőképernyő neve magyarul „GTL GPS útvonal napló”; a képen a fejléc a kóddal együtt „GPS Track Logger”. A Start és a Stop a jelenlegi gomb felirata, mindkét nyelven.
+Minden kép a futó app felvétele (angol felület), rajzolt telefonkeretben, sötét háttéren, fölötte angol cím és alcím. Egy készlet van; a magyar készlethez magyar felületű felvételek kellenek.
 
-Ezek összeállított képek, a 6,9 hüvelykes méretre. A 2.3.3 szerint a feltöltött kép a futó appot mutassa. Feltöltés előtt ugyanaz a négy képernyő jöjjön egy 6,9 hüvelykes iPhone-ról vagy szimulátorról (1320×2868), ha a futó felület eltér. A mentett útvonal képe olvasható nevet mutat (Kerékpár, Túra, Autó). A lista a kódban még a tárolt nyers típust írja; amíg ez így van, a `04-saved-tracks.png` ne menjen fel.
+A felvételek 739×1600 pixelesek voltak, kb. 1,3-szeres nagyítással kerültek a képre; teljes felbontású felvételből élesebb lenne. A `02-route.png` és a `04-compass.png` felvételén látszott a telefon széle; ez le van vágva, a hiányzó sáv pótolva. A `03-gps.png` képen és a feature graphicon a koordináta 48.399787° N, 21.654028° E (Sátoraljaújhely, Kazinczy Ferenc utca 22.). A magasságadatok és a `01-map.png` térképe a valódi felvételből maradtak.
+
+A korábbi készletet a `docs/images/app-store/` alatt (négy összeállított kép angolul és magyarul, plusz ikon) a fenti mappák váltják.
