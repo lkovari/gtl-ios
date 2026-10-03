@@ -446,9 +446,9 @@ Az elutasítást megelőző javítási terv, súlyozva (Critical–Low, a végé
 
 | Fájl | Méret | App Store Connect |
 | --- | --- | --- |
-| `docs/screenshots/iphone-6.9-inch/01-map.png` … `08-about.png` | 1320×2868 PNG, RGB, alfa nélkül | Az app iOS verziója → Screenshots → 6.9" Display. Sorrend: 01-től 08-ig. |
+| `docs/images/app-store/iphone-6.9-inch/01-map.png` … `08-about.png` | 1320×2868 PNG, RGB, alfa nélkül | Az app iOS verziója → Screenshots → 6.9" Display. Sorrend: 01-től 08-ig. |
 | `docs/icon/app-icon-1024.png` | 1024×1024 PNG, RGB, alfa nélkül, sarok nélkül | Nem külön mező. Az ikont a feltöltött build adja. A fájl a `gtl/Assets.xcassets/AppIcon.appiconset/AppIcon.png` másolata. |
-| `docs/splash/splash-1320x2868.png` | 1320×2868 PNG | Nem töltődik fel. A kezdőképernyő úgy, ahogy a `LaunchScreen.storyboard` rajzolja: fekete háttér, középen a Brand kép a szélesség 62%-án. |
+| `docs/images/app-store/splash/splash-1320x2868.png` | 1320×2868 PNG | Nem töltődik fel. A kezdőképernyő úgy, ahogy a `LaunchScreen.storyboard` rajzolja: fekete háttér, középen a Brand kép a szélesség 62%-án. |
 | `docs/featuregraphics/feature-graphic-1024x500.png` és `feature-graphic-2048x1000.png` | 1024×500 és 2048×1000 PNG | Az App Store-ba nem töltődik fel. Montázs az ikonból, a névből és az Útvonal, a Térkép és a GPS képernyőből, Google Playre, webre vagy promócióhoz. |
 
 Egy lokalizációhoz 1–10 képernyőkép kell. Itt nyolc van, állóban, mert az app csak álló tájolást enged.
@@ -466,6 +466,8 @@ Egy lokalizációhoz 1–10 képernyőkép kell. Itt nyolc van, állóban, mert 
 
 Minden kép a futó app felvétele (angol felület), rajzolt telefonkeretben, sötét háttéren, fölötte angol cím és alcím. Egy készlet van; a magyar készlethez magyar felületű felvételek kellenek.
 
+A `05-offline-maps.png` a C1 javítás után készült, világos módú felvételből: a képernyő színei a többi kép sötét módú színeire vannak átszínezve (háttér, kártyák, szöveg, gombok), a tartalom változatlan.
+
 A felvételek 739×1600 pixelesek voltak, kb. 1,3-szeres nagyítással kerültek a képre; teljes felbontású felvételből élesebb lenne. A `02-route.png` és a `04-compass.png` felvételén látszott a telefon széle; ez le van vágva, a hiányzó sáv pótolva. A `03-gps.png` képen és a feature graphicon a koordináta 48.399787° N, 21.654028° E (Sátoraljaújhely, Kazinczy Ferenc utca 22.). A magasságadatok és a `01-map.png` térképe a valódi felvételből maradtak.
 
-A korábbi készletet a `docs/images/app-store/` alatt (négy összeállított kép angolul és magyarul, plusz ikon) a fenti mappák váltják.
+A feltöltendő képernyőképek egyetlen helye a `docs/images/app-store/iphone-6.9-inch/`. A korábbi rajzolt mockupok (négy kép angolul és magyarul) törölve lettek, mert nem a futó appot mutatták (2.3.3). A `docs/images/app-store/app-icon/app-icon-1024.png` egy élesebb ikonváltozat; nem azonos a `docs/icon/` másolattal, és csak akkor kerül a buildbe, ha lecseréled vele az `AppIcon.png`-t.

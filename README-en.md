@@ -440,9 +440,9 @@ The fix plan for likely App Store rejection causes, ranked Critical to Low with 
 
 | File | Size | App Store Connect |
 | --- | --- | --- |
-| `docs/screenshots/iphone-6.9-inch/01-map.png` through `08-about.png` | 1320×2868 PNG, RGB, no alpha | The iOS version → Screenshots → 6.9" Display. Order: 01 to 08. |
+| `docs/images/app-store/iphone-6.9-inch/01-map.png` through `08-about.png` | 1320×2868 PNG, RGB, no alpha | The iOS version → Screenshots → 6.9" Display. Order: 01 to 08. |
 | `docs/icon/app-icon-1024.png` | 1024×1024 PNG, RGB, no alpha, no pre-rounded corners | Not a separate field. The uploaded build supplies the icon. The file is a copy of `gtl/Assets.xcassets/AppIcon.appiconset/AppIcon.png`. |
-| `docs/splash/splash-1320x2868.png` | 1320×2868 PNG | Not uploaded. It is the launch screen as `LaunchScreen.storyboard` draws it: black, with the Brand image centered at 62% of the width. |
+| `docs/images/app-store/splash/splash-1320x2868.png` | 1320×2868 PNG | Not uploaded. It is the launch screen as `LaunchScreen.storyboard` draws it: black, with the Brand image centered at 62% of the width. |
 | `docs/featuregraphics/feature-graphic-1024x500.png` and `feature-graphic-2048x1000.png` | 1024×500 and 2048×1000 PNG | Not uploaded to the App Store. A montage of the icon, the name, and the Route, Map, and GPS screens, for Google Play, the web, or promotion. |
 
 One localization needs 1 to 10 screenshots. This set has eight, portrait, because the app is portrait only.
@@ -460,6 +460,8 @@ One localization needs 1 to 10 screenshots. This set has eight, portrait, becaus
 
 Each image is a capture of the running app (English interface) inside a drawn phone frame, on a dark background, with an English title and subtitle above it. There is one set; a Hungarian set would need captures with the Hungarian interface.
 
+`05-offline-maps.png` was taken after the C1 fix from a light-mode capture; its colors (background, cards, text, buttons) are remapped to the dark-mode colors of the other images, and the content is unchanged.
+
 The captures were 739×1600 and are enlarged about 1.3 times, so captures at full device resolution would be sharper. In `02-route.png` and `04-compass.png` the capture showed the edge of the phone; that edge is cropped and the missing strip is filled in. In `03-gps.png` and in the feature graphic the coordinates are replaced with 48.399787° N, 21.654028° E (Kazinczy Ferenc utca 22, Sátoraljaújhely). The altitude figures and the map in `01-map.png` are still from the real capture.
 
-The older set in `docs/images/app-store/` (four composed images in English and Hungarian, and an icon) is superseded by the folders above.
+The screenshots to upload live in one place: `docs/images/app-store/iphone-6.9-inch/`. The earlier drawn mockups (four images in English and Hungarian) were removed because they did not show the running app (guideline 2.3.3). `docs/images/app-store/app-icon/app-icon-1024.png` is a sharper icon variant; it differs from the copy in `docs/icon/` and only ships if you replace `AppIcon.png` with it.
