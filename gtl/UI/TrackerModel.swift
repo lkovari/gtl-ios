@@ -75,6 +75,7 @@ final class TrackerModel {
     var downloadedIds: [String] = []
     var downloadFraction: [String: Double] = [:]
     var downloadError: String?
+    var catalogSizes: [String: Int64] = [:]
     var searchQuery = ""
     var searchHits: [MapSearchHit] = []
     var searchIndexing = false
@@ -956,6 +957,20 @@ final class TrackerModel {
                 cap: DownloadBudget.maxTuhuDownloadBytes,
                 restrictURL: true
             )
+        }
+    }
+
+    func loadCatalogSizes() async {
+        var targets = OsmCatalog.regions.map { ($0.id, $0.url) }
+        targets.append((OsmCatalog.tuhuId, OsmCatalog.tuhuURL))
+        targets.removeAll { catalogSizes[$0.0] != nil }
+        await withTaskGroup(of: (String, Int64?).self) { group in
+            for (id, url) in targets {
+                group.addTask { (id, await DownloadSize.contentLength(of: url)) }
+            }
+            for await (id, length) in group {
+                if let length { catalogSizes[id] = length }
+            }
         }
     }
 

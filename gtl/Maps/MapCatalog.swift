@@ -19,7 +19,7 @@ enum OsmCatalog {
         region("eu-slovenia", "EU Slovenia", "europe/slovenia.map", "SI"),
         region("eu-germany", "EU Germany", "europe/germany.map", "DE"),
         region("eu-poland", "EU Poland", "europe/poland.map", "PL"),
-        region("eu-czech", "EU Czech Republic", "europe/czech_republic.map", "CZ"),
+        region("eu-czech", "EU Czech Republic", "europe/czech-republic.map", "CZ"),
         region("eu-italy", "EU Italy", "europe/italy.map", "IT"),
         region("eu-france", "EU France", "europe/france.map", "FR"),
         region("eu-spain", "EU Spain", "europe/spain.map", "ES"),
@@ -27,10 +27,10 @@ enum OsmCatalog {
         region("eu-netherlands", "EU Netherlands", "europe/netherlands.map", "NL"),
         region("eu-belgium", "EU Belgium", "europe/belgium.map", "BE"),
         region("eu-switzerland", "EU Switzerland", "europe/switzerland.map", "CH"),
-        region("eu-england", "EU England", "europe/great_britain/england.map", "GB"),
-        region("eu-scotland", "EU Scotland", "europe/great_britain/scotland.map", "GB"),
-        region("eu-wales", "EU Wales", "europe/great_britain/wales.map", "GB"),
-        region("eu-ireland", "EU Ireland", "europe/ireland.map", "IE"),
+        region("eu-england", "EU England", "europe/united-kingdom/england.map", "GB"),
+        region("eu-scotland", "EU Scotland", "europe/united-kingdom/scotland.map", "GB"),
+        region("eu-wales", "EU Wales", "europe/united-kingdom/wales.map", "GB"),
+        region("eu-ireland", "EU Ireland and Northern Ireland", "europe/ireland-and-northern-ireland.map", "IE"),
         region("eu-greece", "EU Greece", "europe/greece.map", "GR"),
         region("eu-sweden", "EU Sweden", "europe/sweden.map", "SE"),
         region("eu-norway", "EU Norway", "europe/norway.map", "NO"),
@@ -41,9 +41,9 @@ enum OsmCatalog {
         region("eu-bulgaria", "EU Bulgaria", "europe/bulgaria.map", "BG"),
         region("asia-japan", "Japan", "asia/japan.map", "JP"),
         region("asia-india", "India", "asia/india.map", "IN"),
-        region("us-california", "US California", "north-america/united-states/california.map", "US"),
-        region("us-new-york", "US New York", "north-america/united-states/new-york.map", "US"),
-        region("us-texas", "US Texas", "north-america/united-states/texas.map", "US"),
+        region("us-california", "US California", "north-america/us/california.map", "US"),
+        region("us-new-york", "US New York", "north-america/us/new-york.map", "US"),
+        region("us-texas", "US Texas", "north-america/us/texas.map", "US"),
         region("ca-ontario", "CA Ontario", "north-america/canada/ontario.map", "CA"),
         region("sa-brazil", "Brazil", "south-america/brazil.map", "BR"),
         region("au-australia", "Australia", "australia-oceania/australia.map", "AU")
@@ -67,7 +67,7 @@ struct PendingMapDownload: Identifiable {
 }
 
 enum DownloadBudget {
-    static let maxOsmBytes: Int64 = 2 * 1024 * 1024 * 1024
+    static let maxOsmBytes: Int64 = 5 * 1024 * 1024 * 1024
     static let reserveBytes: Int64 = 64 * 1024 * 1024
     static let maxTuhuDownloadBytes: Int64 = 500 * 1024 * 1024
     static let maxTuhuUnzipBytes: Int64 = 1024 * 1024 * 1024

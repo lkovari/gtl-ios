@@ -434,6 +434,8 @@ The App Store has no Google Play feature-graphic slot (1024×500). For this iPho
 
 The review note, with file ranges and the fix for each item, is [gtl-ios-review-hu.md](gtl-ios-review-hu.md) (Hungarian).
 
+The fix plan for likely App Store rejection causes, ranked Critical to Low with a closing NON DECLINE list, is [gtl-ios-decline-fix-plan-hu.md](gtl-ios-decline-fix-plan-hu.md) (Hungarian).
+
 #### Where each file goes
 
 | File | Size | App Store Connect |

@@ -185,6 +185,7 @@ struct MapDownloadScreen: View {
         }
         .navigationTitle(L10n.text("Offline maps", "Offline térképek"))
         .navigationBarTitleDisplayMode(.inline)
+        .task { await model.loadCatalogSizes() }
         .alert(
             L10n.text("Download on mobile data?", "Letöltés mobilhálózaton?"),
             isPresented: Binding(
@@ -221,8 +222,13 @@ struct MapDownloadScreen: View {
                 }
             }
             .buttonStyle(.bordered)
-            Text(country).font(.caption).foregroundStyle(.secondary)
+            Text(caption(id: id, country: country)).font(.caption).foregroundStyle(.secondary)
         }
+    }
+
+    private func caption(id: String, country: String) -> String {
+        guard let bytes = model.catalogSizes[id] else { return country }
+        return "\(country) · \(ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file))"
     }
 }
 

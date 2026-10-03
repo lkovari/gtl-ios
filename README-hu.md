@@ -440,6 +440,8 @@ Az App Store-nak nincs Google Play-s feature graphic helye (1024×500). Ennél a
 
 A review jegyzet, sorokkal és javítással: [gtl-ios-review-hu.md](gtl-ios-review-hu.md).
 
+Az elutasítást megelőző javítási terv, súlyozva (Critical–Low, a végén NON DECLINE): [gtl-ios-decline-fix-plan-hu.md](gtl-ios-decline-fix-plan-hu.md).
+
 #### Hova kerülnek
 
 | Fájl | Méret | App Store Connect |
