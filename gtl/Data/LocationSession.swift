@@ -3,7 +3,41 @@ import Foundation
 
 enum BackgroundLogging {
     static func isActive(recording: Bool, authorization: CLAuthorizationStatus) -> Bool {
-        recording && authorization == .authorizedAlways
+        recording && (authorization == .authorizedWhenInUse || authorization == .authorizedAlways)
+    }
+}
+
+enum LocationBlock: Equatable {
+    case denied
+    case preciseRequired
+}
+
+enum LocationPrompt: Equatable {
+    case requestWhenInUse
+    case beginRecording
+    case blocked(LocationBlock)
+}
+
+enum LocationStart {
+    static func decide(authorization: CLAuthorizationStatus) -> LocationPrompt {
+        switch authorization {
+        case .notDetermined: return .requestWhenInUse
+        case .authorizedWhenInUse, .authorizedAlways: return .beginRecording
+        case .denied, .restricted: return .blocked(.denied)
+        @unknown default: return .blocked(.denied)
+        }
+    }
+
+    static func resumeAfterGrant(pendingStart: Bool, authorization: CLAuthorizationStatus) -> LocationPrompt? {
+        guard pendingStart else { return nil }
+        let prompt = decide(authorization: authorization)
+        return prompt == .requestWhenInUse ? nil : prompt
+    }
+}
+
+enum LoggingStart {
+    static func admit(databaseAvailable: Bool, sessionId: Int64?) -> Bool {
+        databaseAvailable && sessionId != nil
     }
 }
 
@@ -27,15 +61,9 @@ final class LocationSession: NSObject, CLLocationManagerDelegate {
 
     var authorization: CLAuthorizationStatus { manager.authorizationStatus }
 
-    var recordsWhileLocked: Bool {
-        BackgroundLogging.isActive(recording: recording, authorization: manager.authorizationStatus)
-    }
-
     var accuracyAuthorization: CLAccuracyAuthorization { manager.accuracyAuthorization }
 
     func requestWhenInUse() { manager.requestWhenInUseAuthorization() }
-
-    func requestAlways() { manager.requestAlwaysAuthorization() }
 
     func ensurePreciseRoute() async -> Bool {
         if manager.accuracyAuthorization == .fullAccuracy { return true }

@@ -59,11 +59,21 @@ struct TrackerScreen: View {
                 model.showErrorLog = false
             }
         }
-        .sheet(isPresented: $model.showAlwaysExplanation) {
-            AlwaysExplanationSheet(
-                allow: { model.allowBackgroundLogging() },
-                whileUsing: { model.logOnlyWhileUsingApp() }
-            )
+        .alert(
+            L10n.text("Location needed", "Helyzet szükséges"),
+            isPresented: Binding(get: { model.locationBlock != nil }, set: { if !$0 { model.locationBlock = nil } })
+        ) {
+            Button(L10n.text("Open Settings", "Beállítások megnyitása")) {
+                model.locationBlock = nil
+                if let url = URL(string: UIApplication.openSettingsURLString) {
+                    UIApplication.shared.open(url)
+                }
+            }
+            .accessibilityIdentifier("locationBlockedOpenSettings")
+            Button(L10n.text("Cancel", "Mégsem"), role: .cancel) { model.locationBlock = nil }
+        } message: {
+            Text(LocationGateText.message(model.locationBlock ?? .denied))
+                .accessibilityIdentifier("locationBlockedAlert")
         }
     }
 
@@ -75,11 +85,17 @@ struct TrackerScreen: View {
                     .foregroundStyle(GtlColor.titleMagenta)
                     .accessibilityIdentifier("brandTitle")
                 Spacer()
-                Button(model.logging ? L10n.text("Stop", "Stop") : L10n.text("Start", "Start")) {
+                Button {
                     model.logging ? model.stopLogging() : model.startLogging()
+                } label: {
+                    Text(model.logging ? L10n.text("Stop", "Leállítás") : L10n.text("Start", "Indítás"))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                        .padding(.horizontal, 8)
+                        .frame(minWidth: 110)
                 }
                 .buttonStyle(GtlPrimaryButton(color: model.logging ? GtlColor.trackingOrange : GtlColor.startBlue))
-                .frame(width: 110)
+                .fixedSize(horizontal: true, vertical: false)
                 .accessibilityIdentifier(model.logging ? "stopLogging" : "startLogging")
                 Menu {
                     Button(L10n.text("Settings", "Beállítások")) { path.append("settings") }
@@ -95,19 +111,17 @@ struct TrackerScreen: View {
                 }
                 .accessibilityIdentifier("mainMenu")
             }
-            if model.logging && !model.recordsWhileLocked {
-                Text(L10n.text(
-                    "A locked screen stops this recording. Set Location to Always to keep the track.",
-                    "Zárolt képernyőn ez a rögzítés megáll. A folyamatos nyomvonalhoz a Helyzet legyen Mindig."
-                ))
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-                .accessibilityIdentifier("lockedScreenNotice")
-            }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
+        .alert(
+            L10n.text("Recording did not start", "A rögzítés nem indult"),
+            isPresented: Binding(get: { model.userNotice != nil }, set: { if !$0 { model.userNotice = nil } })
+        ) {
+            Button(L10n.text("OK", "Rendben"), role: .cancel) { model.userNotice = nil }
+        } message: {
+            Text(model.userNotice ?? "")
+        }
     }
 
     private var tabBar: some View {
@@ -136,25 +150,20 @@ struct TrackerScreen: View {
     }
 }
 
-struct AlwaysExplanationSheet: View {
-    var allow: () -> Void
-    var whileUsing: () -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text(L10n.text("Location while locked", "Helyzet zárolt képernyőn"))
-                .font(.title2.bold())
-            Text(L10n.text(
-                "Recording on a locked screen needs Location set to Always. The blue indicator stays visible until Stop. Stop ends background updates.",
-                "Zárolt képernyőn a rögzítéshez a Helyzet legyen Mindig. A kék jelző a Stopig látszik. A Stop leállítja a háttérfrissítést."
-            ))
-            Button(L10n.text("Allow Always", "Mindig engedélyezése"), action: allow)
-                .buttonStyle(GtlPrimaryButton(color: GtlColor.startBlue))
-            Button(L10n.text("Only while using the app", "Csak az app használata közben"), action: whileUsing)
-                .buttonStyle(GtlPrimaryButton(color: GtlColor.hudTeal))
+enum LocationGateText {
+    static func message(_ block: LocationBlock) -> String {
+        switch block {
+        case .preciseRequired:
+            return L10n.text(
+                "Precise location is required. Turn on Precise Location in Settings.",
+                "Pontos hely kell. Kapcsold be a Pontos helyet a Beállításokban."
+            )
+        case .denied:
+            return L10n.text(
+                "Location is off. Turn it on in Settings to record a route.",
+                "A helyzet ki van kapcsolva. Az útvonal rögzítéséhez kapcsold be a Beállításokban."
+            )
         }
-        .padding(24)
-        .presentationDetents([.medium])
     }
 }
 
@@ -296,16 +305,7 @@ struct GpsTab: View {
     }
 
     private var locationGate: String {
-        if model.preciseLocationRequired {
-            return L10n.text(
-                "Precise location is required. Turn on Precise Location in Settings.",
-                "Pontos hely kell. Kapcsold be a Pontos helyet a Beállításokban."
-            )
-        }
-        return L10n.text(
-            "Location is off. Turn it on in Settings to record a route.",
-            "A helyzet ki van kapcsolva. Az útvonal rögzítéséhez kapcsold be a Beállításokban."
-        )
+        LocationGateText.message(model.preciseLocationRequired ? .preciseRequired : .denied)
     }
 
     private var statusLine: String {

@@ -2,6 +2,17 @@ import MapKit
 @preconcurrency import MapLibre
 import SwiftUI
 
+enum MapGpsNotice {
+    static func visible(logging: Bool, poorGps: Bool) -> Bool { logging && poorGps }
+}
+
+enum MapAttribution {
+    static func text(effectiveOffline: Bool, selectedMapId: String) -> String? {
+        guard effectiveOffline else { return nil }
+        return selectedMapId == OsmCatalog.tuhuId ? "© Turistautak.hu" : "© OpenStreetMap contributors"
+    }
+}
+
 struct MapTab: View {
     @Bindable var model: TrackerModel
     @Namespace private var mapScope
@@ -9,6 +20,7 @@ struct MapTab: View {
     @State private var searchOpen = false
     @State private var layersOpen = false
     @State private var speedScaleToggled = false
+    @State private var bottomControlsHeight: CGFloat = 150
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -28,6 +40,15 @@ struct MapTab: View {
                 if searchOpen {
                     searchBox
                 }
+                if MapGpsNotice.visible(logging: model.logging, poorGps: model.poorGps) {
+                    Text(L10n.text("GPS quality is too low", "A GPS minősége túl alacsony"))
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(GtlColor.amber, in: RoundedRectangle(cornerRadius: 8))
+                        .accessibilityIdentifier("poorGpsNotice")
+                }
                 Spacer()
                     .allowsHitTesting(false)
                 HStack(alignment: .bottom) {
@@ -40,13 +61,16 @@ struct MapTab: View {
                         if showsSpeedScale {
                             speedLegend
                         }
-                        Text(model.effectiveOffline && model.settings.selectedMapId == OsmCatalog.tuhuId ? "© Turistautak.hu" : model.effectiveOffline ? "© OpenStreetMap contributors" : "")
-                            .font(.caption2)
-                            .padding(4)
-                            .background(.ultraThinMaterial)
-                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                        if let attribution = MapAttribution.text(effectiveOffline: model.effectiveOffline, selectedMapId: model.settings.selectedMapId) {
+                            Text(attribution)
+                                .font(.caption2)
+                                .padding(4)
+                                .background(.ultraThinMaterial)
+                                .clipShape(RoundedRectangle(cornerRadius: 6))
+                        }
                     }
                 }
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { bottomControlsHeight = $0 }
             }
             .padding(10)
         }
@@ -168,7 +192,7 @@ struct MapTab: View {
                 logging: model.logging
             )
         } else {
-            OnlineMap(model: model, mapScope: mapScope)
+            OnlineMap(model: model, mapScope: mapScope, bottomInset: bottomControlsHeight + 18)
         }
     }
 
@@ -453,6 +477,7 @@ private struct OverlayChoiceButton: ButtonStyle {
 struct OnlineMap: View {
     @Bindable var model: TrackerModel
     var mapScope: Namespace.ID
+    var bottomInset: CGFloat = 168
     @State private var position: MapCameraPosition = .automatic
     @State private var cameraDistance: Double = 8_000
     @State private var applyingFollow = false
@@ -482,7 +507,7 @@ struct OnlineMap: View {
                 }
             }
             if let latitude = model.distanceTarget?.latitude, let longitude = model.distanceTarget?.longitude {
-                Annotation("Distance", coordinate: CLLocationCoordinate2D(latitude: latitude, longitude: longitude)) {
+                Annotation(L10n.text("Distance", "Távolság"), coordinate: CLLocationCoordinate2D(latitude: latitude, longitude: longitude)) {
                     Circle()
                         .fill(GtlColor.hudTeal)
                         .frame(width: 14, height: 14)
@@ -491,6 +516,7 @@ struct OnlineMap: View {
             }
         }
         .mapStyle(mapStyle)
+        .safeAreaPadding(.bottom, bottomInset)
         .mapControls {
             MapScaleView()
         }
@@ -576,7 +602,7 @@ struct OnlineMap: View {
     }
 
     private func userMark(latitude: Double, longitude: Double) -> some MapContent {
-        Annotation("You", coordinate: CLLocationCoordinate2D(latitude: latitude, longitude: longitude)) {
+        Annotation(L10n.text("You", "Te"), coordinate: CLLocationCoordinate2D(latitude: latitude, longitude: longitude)) {
             ZStack {
                 Circle()
                     .fill(GtlColor.carmine)

@@ -98,7 +98,7 @@ sequenceDiagram
 
 The first launch shows a disclaimer. Accept is stored on the device. Refuse closes the app.
 
-The tracker has GPS, Route, Map, and Compass. The menu opens Settings, offline map downloads, saved tracks, Help, About, and Location settings. Tapping the version line on About seven times opens the error log.
+The tracker has GPS, Route, Map, and Compass. The menu opens Settings, offline map downloads, saved tracks, Help, About, and Location settings. The Error log button on About opens the error log. In Saved tracks, Recorded points shows the stored points of one selected route.
 
 GPS and Route use the same instrument language as the compass. Light and dark follow the system, on the same background as the other tabs. The readings are unchanged. What changed is how they are set on the screen.
 
@@ -136,7 +136,7 @@ How to use the camera, the speed colors, KMZ altitude, and a route from a map ta
 
 Offline maps use one downloaded region at a time:
 
-- OpenStreetMap regions from `https://download.mapsforge.org/maps/v5/`, with a 2 GB cap and a 64 MB free-space reserve
+- OpenStreetMap regions from the HTTPS mirror `https://ftp-stud.hs-esslingen.de/Mirrors/download.mapsforge.org/maps/v5/`, grouped by continent, with a 5 GiB cap and a 64 MB free-space reserve
 - Turistautak.hu from `https://turistautak.elte.hu/tuhu/tuhu_mapsforge.zip` only
 
 A download reads the real file size first. It does not start when the size cannot be read, the file is over the cap, or free space minus the 64 MB reserve is not enough. On a mobile network the size is confirmed before the download starts. While it runs, the download stops if the bytes written would pass free space minus the reserve, or the cap. Downloaded map files are excluded from device backup.
@@ -181,18 +181,17 @@ Place search on an offline map uses an on-device index. Queries start at 3 chara
 
 ## Privacy
 
-The privacy manifest declares precise location for app functionality. Required Reason API reasons: UserDefaults `CA92.1`, file timestamp `C617.1`, and disk space `E174.1`. The app does not track. `ITSAppUsesNonExemptEncryption` is false.
+The privacy manifest declares no collected data: the track stays on the phone, and MapKit requests are served by Apple, not the developer. The App Store Connect answer is Data Not Collected. Required Reason API reasons: UserDefaults `CA92.1`, file timestamp `C617.1`, and disk space `E174.1`. The app does not track. `ITSAppUsesNonExemptEncryption` is false.
 
 The logged route, acceleration, and lean angle stay in SQLite on the phone. An iPhone backup includes that database. Downloaded map files are excluded from backup. The map, search, a route, and an address send Apple the coordinate or map area needed for that request. An OSM or Turistautak download lets that server see the IP address and the requested file. Place search on a downloaded map runs on the phone. The error log stays on the phone and is not sent anywhere. The logged track is not uploaded to the developer’s server. The first screen and the Help usage section say the same thing.
 
 Privacy policy: `https://lkovari.github.io/KLHome/assets/bigfiles/gtl-ios-private-policy.html`. Use that same address as the App Store Connect Support URL. The source is `docs/gtl-ios-private-policy.html`; copy it to the KLHome site before submission. About also shows `laszlo.kovary@gmail.com`. The link is on the first screen, in Settings, and in Help.
 
-Refuse on the first screen does not quit the app. Recording stays off until Accept. While location is When In Use, Start explains why Always is needed for a locked screen; choosing only while using the app starts without an Always request. Recording does not start on reduced accuracy until Precise Location is allowed. If location is denied, the GPS tab opens Location settings.
+Refuse on the first screen does not quit the app. Recording stays off until Accept. GTL asks only for While Using the App and never for Always. After Start, recording continues on a locked screen and in the background until Stop. Recording does not start on reduced accuracy until Precise Location is allowed. If location is denied or Precise Location is off, Start and the location button show an alert on every tab with Open Settings; the GPS tab also explains it.
 
 Purpose strings, in English and Hungarian:
 
 - Location when in use
-- Location always and when in use
 - Motion
 - Temporary precise location for the route (`PreciseRoute`)
 
@@ -229,6 +228,8 @@ The manifest used to declare only the UserDefaults reason (`CA92.1`). The place 
 Precise location remains, for app functionality, not linked, not used for tracking. File timestamp `C617.1` and disk space `E174.1` were added. That does not change the steps a user takes. The resolved MapLibre 6.31.0 framework ships its own `PrivacyInfo.xcprivacy`, so no extra manifest was written into it.
 
 ### Always permission
+
+Replaced in October 2026: GTL no longer asks for Always (see [Review fixes, October 2026](#review-fixes-october-2026)). The history below describes the earlier build.
 
 If location was only While Using the App, Start used to open the system Always dialog immediately and start the session in the same step. The user did not see an in-app sentence, before that dialog, saying that locked-screen recording is why Always is needed.
 
@@ -294,6 +295,26 @@ The privacy policy page, `docs/gtl-ios-private-policy.html`, was brought up to d
 Copy the file to the KLHome site again, or the in-app link still opens the older text.
 
 The UI test looks for 2026 in the copyright line instead of 2014, and for the Usage type heading in Settings.
+
+### Review fixes, October 2026
+
+These changes answer the pre-submission review in `gtl-ios-decline-fix-plan-hu.md`.
+
+- **Locked-screen recording with While Using the App.** GTL no longer asks for Always. Start needs While Using the App and Precise Location. While a session records, `CLBackgroundActivitySession` and background location updates keep it going on a locked screen and in the background, with the blue indicator, until Stop. Stop ends the session and the indicator. The map without a session still asks for no background updates. Force quitting the app stops the recording, and it does not come back on its own. The Always sheet, the line under the title about a locked screen, and the Always purpose string are gone. Keep screen on while logging now only stops the display from dimming.
+- **Start never stays silent.** Denied or restricted location, or missing Precise Location, shows an alert on every tab with Open Settings and Cancel. The location button gives the same alert. The first Start on a new install asks for location and then starts recording once it is granted, without a second tap.
+- **Track database.** If the database does not open, Start stays Start, an alert says recording did not start, and the error log records it.
+- **Visible screens instead of hidden gestures.** The error log is the Error log button on About. The stored points of a route open from Saved tracks: select one route, then Recorded points at the bottom. The seven-tap and triple-tap gestures are gone.
+- **About** shows the device model and system version, not the device name.
+- **Map.** Online, the Apple Maps logo and Legal link sit above the bottom controls, and the empty attribution chip is gone. While logging, low GPS quality shows a notice under the top buttons on Map too.
+- **Downloads.** OSM files come from the HTTPS mirror `https://ftp-stud.hs-esslingen.de/Mirrors/download.mapsforge.org/maps/v5/`. The list is grouped by continent, without the “EU” prefix, with country names in the phone’s language. The background download session is created at launch, so a download finished while the app was closed is still installed. A non-2xx answer or an unreadable map file shows “The download failed.” and leaves nothing in the maps folder.
+- **Free space.** A download does not start when free space cannot be read. After the mobile-data question the space check runs again with the current free space. The Turistautak archive is unpacked only when its extracted size plus the 64 MB reserve fits; otherwise “Not enough free space” appears and the archive is deleted.
+- **Devices.** `UIRequiredDeviceCapabilities` lists `gps` and `location-services`, so the App Store does not offer GTL on devices without GPS, such as Wi-Fi-only iPads. iPads with cellular have GPS and can still install the iPhone app in compatibility mode; only `telephony` would exclude every iPad.
+- **Apple Maps credit.** The map's bottom margin follows the measured height of the bottom controls (HUD, buttons, and the open speed scale), so the Apple Maps logo and Legal link stay above them. Checked in the simulator while logging with the speed scale open.
+- **Background check in the simulator.** With While Using the App and a simulated route, a recording sent to the background kept writing points (15, then 26 after 30 s, then 36 after 60 s). A locked screen on a real iPhone still needs its own walk.
+- **Third parties.** The first screen, Help, the privacy policy, and the store text say that nothing stored on the phone is shared with a third party; data leaves only through a GPX or KMZ export the user starts. Map, search, route, and address requests still send Apple the coordinate they need.
+- **Export.** “Saved” appears only when the GPX or KMZ file exists; otherwise the alert says the file could not be saved.
+- **Hungarian labels.** Indítás / Leállítás on the main button, Metrikus / Angolszász for units, Távolság and Te on the map.
+- **Store and privacy.** The privacy manifest declares no collected data, so the App Privacy answer is Data Not Collected. The privacy policy describes the new location behavior and the mirror, and it uses system fonts instead of Google Fonts. The page header shows the app, version 1.0.1, and the publisher, without a last-updated date; the Changes section says the page is updated before an app version that changes data practices is released. `AccentColor` exists (`#1F8A80`), and the bundle name is GPS Track Logger.
 
 ### What stayed the same
 
@@ -410,7 +431,7 @@ The path is a blue dashed line, separate from the speed-colored track and from t
 
 ### Logging on a locked screen
 
-Start records in the foreground as soon as location is allowed. The track continues after the screen locks only when Location is Always. The blue indicator stays until Stop. If Always is granted during that same Start, background recording turns on immediately. While Using the App, locking the screen stops new points, and a line under the title says so. Settings → Recording → Keep screen on while logging only keeps the display awake. It does not replace Always.
+Start begins recording in the foreground with While Using the App and Precise Location. While the session records, a `CLBackgroundActivitySession` and background location updates keep it going on a locked screen and in the background. The blue indicator stays until Stop, and Stop ends both. GTL does not ask for Always. Force quitting the app stops the recording, and it does not restart on its own. Settings → Recording → Keep screen on while logging only stops the display from dimming.
 
 ### Prevent Possible Crash
 
@@ -426,7 +447,7 @@ The colored line is no longer rebuilt from the whole track on every point. A poi
 
 The stored track is still every accepted point, including a Run or Hike point about every 0.5 m. Statistics, the elevation profile, GPX, and KMZ use that full list. The elevation chart is built when the Route tab is shown and when a locked session returns to the foreground, not on every point while the Map tab is up. Each new sample updates the running totals, so distance and elapsed time on the map HUD still tick while the screen is on.
 
-With the screen on, the follow camera is unchanged: about 52 degrees of pitch, GPS course at 1 m/s or faster, compass below that, 5 degree steps, and Keep whole track on screen. Start, Stop, Always, the locked-screen warning, and the idle timer are unchanged.
+With the screen on, the follow camera is unchanged: about 52 degrees of pitch, GPS course at 1 m/s or faster, compass below that, 5 degree steps, and Keep whole track on screen. Start, Stop, and the idle timer are unchanged.
 
 ### App Store images
 
@@ -435,6 +456,8 @@ The App Store has no Google Play feature-graphic slot (1024×500). For this iPho
 The review note, with file ranges and the fix for each item, is [gtl-ios-review-hu.md](gtl-ios-review-hu.md) (Hungarian).
 
 The fix plan for likely App Store rejection causes, ranked Critical to Low with a closing NON DECLINE list, is [gtl-ios-decline-fix-plan-hu.md](gtl-ios-decline-fix-plan-hu.md) (Hungarian).
+
+The remaining rejection risks after those fixes, each with an estimated percentage, the reason, and the fix, are in [gtl-ios-possible-decline-hu.md](gtl-ios-possible-decline-hu.md) (Hungarian).
 
 #### Where each file goes
 
@@ -454,13 +477,13 @@ One localization needs 1 to 10 screenshots. This set has eight, portrait, becaus
 3. `03-gps.png` — GPS: latitude, longitude, accuracy, altitude, and fix age.
 4. `04-compass.png` — MAG / TRUE and the rose.
 5. `05-offline-maps.png` — Offline maps: Turistautak.hu and the OpenStreetMap country list.
-6. `06-saved-tracks.png` — Saved tracks with route thumbnails, distance, time, average and top speed, and Show on map, GPX, KMZ, Delete.
+6. `06-saved-tracks.png` — Saved tracks with route thumbnails, distance, time, average and top speed, and the toolbar menu open with Delete, KMZ, GPX, and Recorded points.
 7. `07-settings.png` — Settings: usage type and units.
 8. `08-about.png` — About.
 
 Each image is a capture of the running app (English interface) inside a drawn phone frame, on a dark background, with an English title and subtitle above it. There is one set; a Hungarian set would need captures with the Hungarian interface.
 
-`05-offline-maps.png` was taken after the C1 fix from a light-mode capture; its colors (background, cards, text, buttons) are remapped to the dark-mode colors of the other images, and the content is unchanged.
+`05-offline-maps.png` (continent groups, no “EU” prefix) and `06-saved-tracks.png` (open toolbar menu with Recorded points) were retaken on 3 October 2026 from light-mode captures; their colors (background, cards, text, buttons) are remapped to the dark-mode colors of the other images, and the content is unchanged.
 
 The captures were 739×1600 and are enlarged about 1.3 times, so captures at full device resolution would be sharper. In `02-route.png` and `04-compass.png` the capture showed the edge of the phone; that edge is cropped and the missing strip is filled in. In `03-gps.png` and in the feature graphic the coordinates are replaced with 48.399787° N, 21.654028° E (Kazinczy Ferenc utca 22, Sátoraljaújhely). The altitude figures and the map in `01-map.png` are still from the real capture.
 

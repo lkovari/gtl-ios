@@ -56,8 +56,8 @@ struct DisclaimerScreen: View {
                     .font(.title.bold())
                     .foregroundStyle(GtlColor.titleMagenta)
                 Text(L10n.text(
-                    "GTL records your route on this phone. The logged track is not uploaded to our server. The map, search, a route, and an address send Apple the coordinate needed for that request. Do not interact with the app while driving. You use it at your own risk. While logging, iOS shows the location indicator.",
-                    "A GTL ezen a telefonon rögzíti az útvonalat. A naplózott track nem kerül a szerverünkre. A térkép, a keresés, az útvonal és a cím az Apple-nek küldi az ehhez szükséges koordinátát. Vezetés közben ne használd az appot. Saját felelősségre használod. Naplózás közben az iOS helyjelzője látható."
+                    "GTL records your route on this phone. The logged track is not uploaded to our server, and nothing stored on the phone is shared with a third party. The map, search, a route, and an address send Apple the coordinate needed for that request. Do not interact with the app while driving. You use it at your own risk. While logging, iOS shows the location indicator. After Start, recording continues while the screen is locked until you tap Stop. iOS keeps the location indicator visible. GPS used this way can drain the battery.",
+                    "A GTL ezen a telefonon rögzíti az útvonalat. A naplózott track nem kerül a szerverünkre, és a telefonon tárolt adat nem kerül harmadik félhez. A térkép, a keresés, az útvonal és a cím az Apple-nek küldi az ehhez szükséges koordinátát. Vezetés közben ne használd az appot. Saját felelősségre használod. Naplózás közben az iOS helyjelzője látható. Az Indítás után a rögzítés zárolt képernyőn is folytatódik a Leállításig. Az iOS helyjelzője eközben látható. Az így használt GPS merítheti az akkumulátort."
                 ))
                 .foregroundStyle(scheme == .dark ? GtlColor.moonCream : GtlColor.nightInk)
                 Link(L10n.text("Privacy policy", "Adatvédelmi nyilatkozat"), destination: AppLinks.privacyPolicy)

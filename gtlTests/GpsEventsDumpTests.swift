@@ -2,39 +2,6 @@ import XCTest
 @testable import gtl
 
 final class GpsEventsDumpTests: XCTestCase {
-    func testTripleTapOpensOnThirdTapInsideWindow() {
-        var gate = TripleTapGate()
-        let start = Date(timeIntervalSince1970: 1_000)
-        XCTAssertFalse(gate.register(at: start))
-        XCTAssertEqual(gate.count, 1)
-        XCTAssertFalse(gate.register(at: start.addingTimeInterval(0.5)))
-        XCTAssertEqual(gate.count, 2)
-        XCTAssertTrue(gate.register(at: start.addingTimeInterval(1.0)))
-        XCTAssertEqual(gate.count, 0)
-    }
-
-    func testTripleTapResetsToOneWhenGapExceedsWindow() {
-        var gate = TripleTapGate()
-        let start = Date(timeIntervalSince1970: 1_000)
-        XCTAssertFalse(gate.register(at: start))
-        XCTAssertFalse(gate.register(at: start.addingTimeInterval(0.4)))
-        XCTAssertEqual(gate.count, 2)
-        XCTAssertFalse(gate.register(at: start.addingTimeInterval(0.4 + 0.501)))
-        XCTAssertEqual(gate.count, 1)
-        XCTAssertFalse(gate.register(at: start.addingTimeInterval(0.4 + 0.501 + 0.5)))
-        XCTAssertEqual(gate.count, 2)
-    }
-
-    func testTripleTapStartsOverAfterOpening() {
-        var gate = TripleTapGate()
-        let start = Date(timeIntervalSince1970: 1_000)
-        _ = gate.register(at: start)
-        _ = gate.register(at: start.addingTimeInterval(0.2))
-        XCTAssertTrue(gate.register(at: start.addingTimeInterval(0.4)))
-        XCTAssertFalse(gate.register(at: start.addingTimeInterval(0.5)))
-        XCTAssertEqual(gate.count, 1)
-    }
-
     func testDumpListsSessionThenTabSeparatedPoints() {
         let session = TrackSession(
             id: 7,

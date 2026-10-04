@@ -49,6 +49,12 @@ private final class OnceFlag: @unchecked Sendable {
     }
 }
 
+enum DownloadResponse {
+    static func accept(statusCode: Int) -> Bool { (200...299).contains(statusCode) }
+
+    static var failureMessage: String { L10n.text("The download failed.", "A letöltés nem sikerült.") }
+}
+
 @MainActor
 enum DownloadEvents {
     static var completion: (() -> Void)?
@@ -66,16 +72,22 @@ final class MapDownloader: NSObject, URLSessionDownloadDelegate {
     var onFinished: ((String, URL) -> Void)?
     var onFailed: ((String, String) -> Void)?
     private let budgets = DownloadBudgets()
-    private lazy var session: URLSession = {
+    private var session: URLSession?
+
+    override init() {
+        super.init()
         let config = URLSessionConfiguration.background(withIdentifier: "com.lkovari.mobile.apps.gtl.maps")
         config.sessionSendsLaunchEvents = true
         config.waitsForConnectivity = true
         config.isDiscretionary = false
         config.allowsCellularAccess = true
-        return URLSession(configuration: config, delegate: self, delegateQueue: nil)
-    }()
+        let session = URLSession(configuration: config, delegate: self, delegateQueue: nil)
+        self.session = session
+        session.getAllTasks { _ in }
+    }
 
     func start(_ url: URL, id: String, byteBudget: Int64) {
+        guard let session else { return }
         budgets.set(id, budget: byteBudget)
         let task = session.downloadTask(with: url)
         task.taskDescription = id
@@ -83,15 +95,15 @@ final class MapDownloader: NSObject, URLSessionDownloadDelegate {
     }
 
     func cancel(_ id: String) {
-        session.getAllTasks { tasks in
+        session?.getAllTasks { tasks in
             for task in tasks where task.taskDescription == id { task.cancel() }
         }
     }
 
-    nonisolated static func freeSpace() -> Int64 {
+    nonisolated static func freeSpace() -> Int64? {
         let url = URL(fileURLWithPath: NSHomeDirectory())
         let values = try? url.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey])
-        return values?.volumeAvailableCapacityForImportantUsage ?? Int64.max
+        return values?.volumeAvailableCapacityForImportantUsage
     }
 
     nonisolated func urlSession(
@@ -109,7 +121,7 @@ final class MapDownloader: NSObject, URLSessionDownloadDelegate {
             downloadTask.cancel()
             return
         }
-        if totalBytesWritten > budget || free < DownloadBudget.reserveBytes {
+        if totalBytesWritten > budget || (free.map { $0 < DownloadBudget.reserveBytes } ?? false) {
             budgets.markSpaceStop(id)
             downloadTask.cancel()
             return
@@ -120,6 +132,11 @@ final class MapDownloader: NSObject, URLSessionDownloadDelegate {
 
     nonisolated func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
         guard let id = downloadTask.taskDescription else { return }
+        guard let http = downloadTask.response as? HTTPURLResponse, DownloadResponse.accept(statusCode: http.statusCode) else {
+            let message = DownloadResponse.failureMessage
+            Task { @MainActor in self.onFailed?(id, message) }
+            return
+        }
         let temp = FileManager.default.temporaryDirectory.appendingPathComponent("\(id)-\(UUID().uuidString)")
         do {
             if FileManager.default.fileExists(atPath: temp.path) {

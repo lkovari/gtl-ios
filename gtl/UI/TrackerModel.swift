@@ -107,16 +107,17 @@ final class TrackerModel {
     var zoomStep = 0
     var pendingShare: URL?
     var exportNotice: String?
+    var exportFailed = false
     var returnToMap = false
     var altimeterAvailable = false
     var poorGps = false
-    var recordsWhileLocked = false
     var showErrorLog = false
-    var showAlwaysExplanation = false
     var locationAuthorization: CLAuthorizationStatus = .notDetermined
     var preciseLocationRequired = false
+    var locationBlock: LocationBlock?
+    var pendingStart = false
+    var userNotice: String?
     var pendingCellularDownload: PendingMapDownload?
-    private var versionTaps: [Date] = []
     private var lastTravelDegrees: Float?
     private var compassMagnetic: Float?
     private var compassShift: Float?
@@ -180,7 +181,12 @@ final class TrackerModel {
         let settingsStore = SettingsStore()
         store = settingsStore
         settings = settingsStore.load()
-        database = try? TrackDatabase()
+        do {
+            database = try TrackDatabase()
+        } catch {
+            ErrorLogStore.record(action: "track.database", error: error)
+            database = nil
+        }
         places = try? PlaceIndex()
         location = LocationSession()
         motion = MotionSession()
@@ -383,7 +389,7 @@ final class TrackerModel {
         settings.baroPressureOffsetHpa = BaroAltitude.clampOffset(settings.baroPressureOffsetHpa)
         settings.optimizationTolerance = DouglasPeucker.clampTolerance(settings.optimizationTolerance)
         store.save(settings)
-        UIApplication.shared.isIdleTimerDisabled = logging && (settings.keepScreenOnWhileLogging || !recordsWhileLocked)
+        syncIdleTimer()
         applyOfflineFilter()
         rebuildSpeedRuns()
     }
@@ -396,34 +402,25 @@ final class TrackerModel {
 
     func startLogging() {
         preciseLocationRequired = false
-        switch location.authorization {
-        case .notDetermined:
+        locationAuthorization = location.authorization
+        apply(LocationStart.decide(authorization: location.authorization))
+    }
+
+    private func apply(_ prompt: LocationPrompt) {
+        switch prompt {
+        case .requestWhenInUse:
+            pendingStart = true
             location.requestWhenInUse()
-        case .denied, .restricted:
-            locationAuthorization = location.authorization
-        case .authorizedWhenInUse:
-            showAlwaysExplanation = true
-        case .authorizedAlways:
-            continueAfterLocationChoice(requestAlways: false)
-        @unknown default:
-            break
+        case .beginRecording:
+            pendingStart = false
+            continueAfterPreciseCheck()
+        case .blocked(let block):
+            pendingStart = false
+            locationBlock = block
         }
     }
 
-    func allowBackgroundLogging() {
-        showAlwaysExplanation = false
-        continueAfterLocationChoice(requestAlways: true)
-    }
-
-    func logOnlyWhileUsingApp() {
-        showAlwaysExplanation = false
-        continueAfterLocationChoice(requestAlways: false)
-    }
-
-    private func continueAfterLocationChoice(requestAlways: Bool) {
-        if requestAlways {
-            location.requestAlways()
-        }
+    private func continueAfterPreciseCheck() {
         guard location.authorization == .authorizedAlways || location.authorization == .authorizedWhenInUse else {
             return
         }
@@ -431,20 +428,25 @@ final class TrackerModel {
             let precise = await location.ensurePreciseRoute()
             guard precise else {
                 preciseLocationRequired = true
+                locationBlock = .preciseRequired
                 return
             }
             preciseLocationRequired = false
+            locationBlock = nil
             await beginSession()
         }
+    }
+
+    private func syncIdleTimer() {
+        UIApplication.shared.isIdleTimerDisabled = logging && settings.keepScreenOnWhileLogging
     }
 
     func stopLogging() {
         let now = nowMillis()
         logging = false
         location.stopLogging()
-        recordsWhileLocked = false
         motion.stop()
-        UIApplication.shared.isIdleTimerDisabled = false
+        syncIdleTimer()
         status = "Idle"
         scheduleIndex()
         guard let sessionId else { return }
@@ -535,23 +537,31 @@ final class TrackerModel {
             }
             let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
             let folder = documents.appendingPathComponent("Exports", isDirectory: true)
-            try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
             let stamp = sessionName(nowMillis())
-            let url: URL
-            if kmz {
-                let kml = KmlExporter.export(KmlDocument(name: stamp, trackColorAabbggrr: "ff0000ff", trackWidth: 6, tracks: tracks))
-                let packed = KmzExporter.pack(kml: kml, files: [
-                    "icons/play.png": MarkerIcon.green,
-                    "icons/pause.png": MarkerIcon.amber,
-                    "icons/stop.png": MarkerIcon.red
-                ])
-                url = folder.appendingPathComponent("\(stamp).kmz")
-                try? packed.write(to: url)
-            } else {
-                let gpx = GpxExporter.export(GpxDocument(tracks: gpxTracks))
-                url = folder.appendingPathComponent("\(stamp).gpx")
-                try? gpx.write(to: url, atomically: true, encoding: .utf8)
+            let url = folder.appendingPathComponent(kmz ? "\(stamp).kmz" : "\(stamp).gpx")
+            do {
+                try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+                if kmz {
+                    let kml = KmlExporter.export(KmlDocument(name: stamp, trackColorAabbggrr: "ff0000ff", trackWidth: 6, tracks: tracks))
+                    let packed = KmzExporter.pack(kml: kml, files: [
+                        "icons/play.png": MarkerIcon.green,
+                        "icons/pause.png": MarkerIcon.amber,
+                        "icons/stop.png": MarkerIcon.red
+                    ])
+                    try packed.write(to: url)
+                } else {
+                    let gpx = GpxExporter.export(GpxDocument(tracks: gpxTracks))
+                    try gpx.write(to: url, atomically: true, encoding: .utf8)
+                }
+                guard FileManager.default.fileExists(atPath: url.path) else { throw CocoaError(.fileNoSuchFile) }
+            } catch {
+                pendingShare = nil
+                ErrorLogStore.record(action: "track.export", error: error)
+                exportFailed = true
+                exportNotice = L10n.text("Could not save the file.", "A fájl mentése nem sikerült.")
+                return
             }
+            exportFailed = false
             pendingShare = url
             exportNotice = L10n.text(
                 "Saved \(url.lastPathComponent) in the Files app: On My iPhone → GPS Track Logger → Exports.",
@@ -574,6 +584,7 @@ final class TrackerModel {
         default:
             centerOnNextFix = false
             locationAuthorization = location.authorization
+            locationBlock = .denied
         }
     }
 
@@ -944,7 +955,7 @@ final class TrackerModel {
 
     func download(_ region: OsmRegion) {
         Task {
-            await prepareDownload(url: region.url, id: region.id, title: region.label, cap: DownloadBudget.maxOsmBytes, restrictURL: false)
+            await prepareDownload(url: region.url, id: region.id, title: OsmCatalog.localizedTitle(region), cap: DownloadBudget.maxOsmBytes, restrictURL: false)
         }
     }
 
@@ -994,7 +1005,10 @@ final class TrackerModel {
             downloadError = L10n.text("The download size could not be read.", "A letöltés mérete nem olvasható.")
             return
         }
-        let space = MapDownloader.freeSpace()
+        guard let space = MapDownloader.freeSpace() else {
+            downloadError = L10n.text("Free space could not be read.", "A szabad hely nem olvasható.")
+            return
+        }
         if length > cap {
             downloadError = L10n.text("The file is larger than this download allows.", "A fájl nagyobb, mint amit ez a letöltés enged.")
             return
@@ -1012,7 +1026,11 @@ final class TrackerModel {
     }
 
     private func startPrepared(_ pending: PendingMapDownload) {
-        let space = MapDownloader.freeSpace()
+        guard let space = MapDownloader.freeSpace(),
+              DownloadBudget.canStart(contentLength: pending.bytes, usableSpace: space, cap: pending.cap) else {
+            downloadError = L10n.text("Not enough free space", "Nincs elég szabad hely")
+            return
+        }
         let budget = min(pending.cap, space - DownloadBudget.reserveBytes)
         downloader.start(pending.url, id: pending.id, byteBudget: max(budget, 0))
     }
@@ -1038,16 +1056,6 @@ final class TrackerModel {
         }
     }
 
-    func tapVersion() {
-        let now = Date()
-        versionTaps.append(now)
-        versionTaps.removeAll { now.timeIntervalSince($0) > 2 }
-        if versionTaps.count >= 7 {
-            versionTaps.removeAll()
-            showErrorLog = true
-        }
-    }
-
     private func wire() {
         location.onFix = { [weak self] fix in self?.ingest(fix) }
         location.onHeading = { [weak self] heading in
@@ -1063,10 +1071,10 @@ final class TrackerModel {
         location.onAuthorization = { [weak self] status in
             guard let self else { return }
             self.locationAuthorization = status
-            self.recordsWhileLocked = self.location.recordsWhileLocked
-            if self.logging {
-                UIApplication.shared.isIdleTimerDisabled = self.settings.keepScreenOnWhileLogging || !self.recordsWhileLocked
+            if let prompt = LocationStart.resumeAfterGrant(pendingStart: self.pendingStart, authorization: status) {
+                self.apply(prompt)
             }
+            self.syncIdleTimer()
             self.status = self.logging ? "Logging" : "Idle"
             self.onTabChange()
         }
@@ -1100,12 +1108,20 @@ final class TrackerModel {
 
     private func beginSession() async {
         let now = nowMillis()
+        guard let database else {
+            refuseStart(TrackStoreError.unavailable)
+            return
+        }
         do {
-            let id = try await database?.startSession(
+            let id = try await database.startSession(
                 at: now,
                 usage: settings.usageType.rawValue,
                 system: settings.measurementSystem.rawValue
             )
+            guard LoggingStart.admit(databaseAvailable: true, sessionId: id) else {
+                refuseStart(TrackStoreError.unavailable)
+                return
+            }
             sessionId = id
             logging = true
             cancelIndex()
@@ -1124,14 +1140,30 @@ final class TrackerModel {
             cloud.clear()
             status = "Logging"
             location.startLogging(activity: activityType(settings.usageType))
-            recordsWhileLocked = location.recordsWhileLocked
             if tab == .compass || tab == .map { location.startHeading() }
             motion.startLoggingSensors()
-            UIApplication.shared.isIdleTimerDisabled = settings.keepScreenOnWhileLogging || !recordsWhileLocked
+            syncIdleTimer()
         } catch {
             ErrorLogStore.record(action: "track.insert", error: error)
+            logging = false
+            sessionId = nil
             status = "Logging stopped"
+            userNotice = L10n.text(
+                "Recording could not start because the track database did not open.",
+                "A rögzítés nem indult, mert az útvonal-adatbázis nem nyílt meg."
+            )
         }
+    }
+
+    private func refuseStart(_ error: Error) {
+        ErrorLogStore.record(action: "track.database", error: error)
+        logging = false
+        sessionId = nil
+        status = "Idle"
+        userNotice = L10n.text(
+            "Recording could not start because the track database did not open.",
+            "A rögzítés nem indult, mert az útvonal-adatbázis nem nyílt meg."
+        )
     }
 
     private func ingest(_ location: RecordedFix) {
@@ -1303,19 +1335,34 @@ final class TrackerModel {
             do {
                 let destination = try MapPaths.mapFile(id: id)
                 if id == OsmCatalog.tuhuId {
-                    try TuhuPackage.install(zip: temp, destination: destination)
+                    try TuhuPackage.install(zip: temp, destination: destination, usableSpace: MapDownloader.freeSpace())
                 } else {
                     if FileManager.default.fileExists(atPath: destination.path) {
                         try FileManager.default.removeItem(at: destination)
                     }
                     try FileManager.default.moveItem(at: temp, to: destination)
+                    guard OsmMapFile.isReadable(destination) else {
+                        try? FileManager.default.removeItem(at: destination)
+                        try? FileManager.default.removeItem(at: temp)
+                        downloadFraction[id] = nil
+                        downloadError = DownloadResponse.failureMessage
+                        refreshMaps()
+                        return
+                    }
                 }
                 try? FileManager.default.removeItem(at: temp)
                 MapPaths.excludeFromBackup(destination)
                 downloadFraction[id] = 1
                 refreshMaps()
-            } catch {
+            } catch let error as TuhuPackage.PackageError {
+                try? FileManager.default.removeItem(at: temp)
+                downloadFraction[id] = nil
                 downloadError = error.localizedDescription
+            } catch {
+                ErrorLogStore.record(action: "map.download", error: error)
+                try? FileManager.default.removeItem(at: temp)
+                downloadFraction[id] = nil
+                downloadError = DownloadResponse.failureMessage
             }
         }
     }

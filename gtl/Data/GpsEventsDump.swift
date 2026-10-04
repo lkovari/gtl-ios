@@ -1,27 +1,6 @@
 import Foundation
 import UIKit
 
-struct TripleTapGate {
-    private(set) var count = 0
-    private var last: Date?
-    static let window: TimeInterval = 0.5
-
-    mutating func register(at time: Date) -> Bool {
-        if let last, time.timeIntervalSince(last) <= Self.window {
-            count += 1
-        } else {
-            count = 1
-        }
-        last = time
-        if count >= 3 {
-            count = 0
-            last = nil
-            return true
-        }
-        return false
-    }
-}
-
 struct GpsEventsGrid {
     var sessionLines: [String]
     var columns: [String]

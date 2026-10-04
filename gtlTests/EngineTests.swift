@@ -112,10 +112,12 @@ final class EngineTests: XCTestCase {
         ))
     }
 
-    func testBackgroundLoggingRequiresRecordingAndAlways() {
+    func testBackgroundLoggingWhileRecordingWithWhenInUseOrAlways() {
         XCTAssertFalse(BackgroundLogging.isActive(recording: false, authorization: .authorizedAlways))
-        XCTAssertFalse(BackgroundLogging.isActive(recording: true, authorization: .authorizedWhenInUse))
+        XCTAssertFalse(BackgroundLogging.isActive(recording: false, authorization: .authorizedWhenInUse))
         XCTAssertFalse(BackgroundLogging.isActive(recording: true, authorization: .denied))
+        XCTAssertFalse(BackgroundLogging.isActive(recording: true, authorization: .notDetermined))
+        XCTAssertTrue(BackgroundLogging.isActive(recording: true, authorization: .authorizedWhenInUse))
         XCTAssertTrue(BackgroundLogging.isActive(recording: true, authorization: .authorizedAlways))
     }
 

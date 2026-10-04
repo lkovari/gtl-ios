@@ -254,6 +254,12 @@ enum DatabaseError: Error {
     case exec
 }
 
+enum TrackStoreError: LocalizedError {
+    case unavailable
+
+    var errorDescription: String? { "The track database did not open." }
+}
+
 private func sqliteExec(_ db: OpaquePointer?, _ sql: String) throws {
     guard sqlite3_exec(db, sql, nil, nil, nil) == SQLITE_OK else { throw DatabaseError.exec }
 }

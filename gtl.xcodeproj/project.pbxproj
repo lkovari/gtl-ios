@@ -349,8 +349,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = "GPS Track Logger";
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.navigation";
-				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "GTL records your route on this phone, including while the screen is locked, so the track stays continuous.";
-				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "GTL uses your location to record the route and show it on the map.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "GTL uses your location to record the route and show it on the map. After you tap Start, recording continues while the screen is locked until you tap Stop.";
 				INFOPLIST_KEY_NSMotionUsageDescription = "GTL reads motion and barometric pressure to store lean angle and barometric altitude with the route.";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UIRequiresFullScreen = YES;
@@ -390,8 +389,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = "GPS Track Logger";
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.navigation";
-				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "GTL records your route on this phone, including while the screen is locked, so the track stays continuous.";
-				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "GTL uses your location to record the route and show it on the map.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "GTL uses your location to record the route and show it on the map. After you tap Start, recording continues while the screen is locked until you tap Stop.";
 				INFOPLIST_KEY_NSMotionUsageDescription = "GTL reads motion and barometric pressure to store lean angle and barometric altitude with the route.";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UIRequiresFullScreen = YES;

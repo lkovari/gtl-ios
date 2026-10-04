@@ -2,7 +2,7 @@ import Foundation
 import Compression
 
 enum TuhuPackage {
-    static func install(zip: URL, destination: URL) throws {
+    static func install(zip: URL, destination: URL, usableSpace: Int64?) throws {
         let entries = try ZipArchive.entries(zip)
         if entries.count > DownloadBudget.maxTuhuEntries {
             throw PackageError.tooManyEntries
@@ -10,6 +10,9 @@ enum TuhuPackage {
         let total = entries.reduce(Int64(0)) { $0 + $1.uncompressed }
         if total > DownloadBudget.maxTuhuUnzipBytes {
             throw PackageError.tooLarge
+        }
+        if !DownloadBudget.canUnpack(uncompressedBytes: total, usableSpace: usableSpace) {
+            throw PackageError.notEnoughSpace
         }
         let folder = destination.deletingLastPathComponent().appendingPathComponent("tuhu-unpack", isDirectory: true)
         if FileManager.default.fileExists(atPath: folder.path) {
@@ -38,12 +41,14 @@ enum TuhuPackage {
         case tooLarge
         case missingMap
         case badZip
+        case notEnoughSpace
         var errorDescription: String? {
             switch self {
             case .tooManyEntries: return "Archive has too many files"
             case .tooLarge: return "Archive is too large"
             case .missingMap: return "Archive has no map"
             case .badZip: return "Archive could not be read"
+            case .notEnoughSpace: return L10n.text("Not enough free space", "Nincs elég szabad hely")
             }
         }
     }

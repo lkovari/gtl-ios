@@ -98,7 +98,7 @@ sequenceDiagram
 
 Az első indítás nyilatkozatot mutat. Az elfogadás a készüléken tárolódik. Az elutasítás bezárja az appot.
 
-A naplónak GPS, Útvonal, Térkép és Iránytű füle van. A menü a Beállításokat, az offline térképletöltést, a mentett útvonalakat, a Súgót, a Névjegyet és a Helyzet beállításait nyitja. A Névjegy verziósorára hétszer koppintva megnyílik a hibanapló.
+A naplónak GPS, Útvonal, Térkép és Iránytű füle van. A menü a Beállításokat, az offline térképletöltést, a mentett útvonalakat, a Súgót, a Névjegyet és a Helyzet beállításait nyitja. A Névjegy Hibanapló gombja megnyitja a hibanaplót. A Mentett útvonalakban a Rögzített pontok egy kijelölt útvonal tárolt pontjait mutatja.
 
 A GPS és az Útvonal ugyanazt a műszernyelvet használja, mint az iránytű. A világos és a sötét mód a rendszert követi, ugyanazon a háttéren, mint a többi fül. Az adatok nem változtak. A képernyőn elfoglalt helyük változott.
 
@@ -136,7 +136,7 @@ A kamera, a sebességszín, a KMZ-magasság és a koppintott pontig vezető út 
 
 Offline térkép egyszerre egy letöltött régió:
 
-- OpenStreetMap régiók a `https://download.mapsforge.org/maps/v5/` címről, 2 GB-os plafonnal és 64 MB szabadhely-tartalékkal
+- OpenStreetMap régiók a `https://ftp-stud.hs-esslingen.de/Mirrors/download.mapsforge.org/maps/v5/` HTTPS-tükörről, kontinensek szerint csoportosítva, 5 GiB-os plafonnal és 64 MB szabadhely-tartalékkal
 - Turistautak.hu csak a `https://turistautak.elte.hu/tuhu/tuhu_mapsforge.zip` címről
 
 A letöltés előbb a fájl tényleges méretét olvassa. Ha a méret nem olvasható, nagyobb a plafonnál, vagy a szabad hely a 64 MB tartalékkal nem elég, a letöltés nem indul. Mobilhálózaton a méret megerősítés után indul. Menet közben a letöltés megáll, ha a leírt bájt átlépné a szabad helyet a tartalékkal, vagy a plafont. A letöltött térképfájl kimarad a készülék mentéséből.
@@ -181,18 +181,17 @@ Az offline térkép helykeresése készüléken lévő indexet használ. Az inde
 
 ## Adatvédelem
 
-A privacy manifest pontos helyet kér az app működéséhez. A required reason API okok: UserDefaults `CA92.1`, fájlidő `C617.1`, lemezhely `E174.1`. Az app nem követ. Az `ITSAppUsesNonExemptEncryption` hamis.
+A privacy manifest nem deklarál gyűjtött adatot: a nyomvonal a telefonon marad, a MapKit-kéréseket az Apple szolgálja ki, nem a fejlesztő. Az App Store Connect válasz Data Not Collected. A required reason API okok: UserDefaults `CA92.1`, fájlidő `C617.1`, lemezhely `E174.1`. Az app nem követ. Az `ITSAppUsesNonExemptEncryption` hamis.
 
 A naplózott nyomvonal, a gyorsulás és a dőlés a telefon SQLite adatbázisában marad. Az iPhone mentése ezt az adatbázist tartalmazza. A letöltött térképfájl a mentésből ki van zárva. A térkép, a keresés, az útvonal és a cím az Apple-nek küldi az ehhez szükséges koordinátát vagy térképablakot. Az OSM- és a Turistautak-letöltésnél a kiszolgáló látja az IP-címet és a kért fájlt. Letöltött térképen a helykeresés a telefonon fut. A hibanapló a telefonon marad, és sehova nem kerül elküldésre. A naplózott track nem kerül a fejlesztő szerverére. Ezt mondja az első képernyő és a Súgó használati bekezdése is.
 
 Az adatvédelmi nyilatkozat: `https://lkovari.github.io/KLHome/assets/bigfiles/gtl-ios-private-policy.html`. Ugyanez az App Store Connect Support URL. A forrás a `docs/gtl-ios-private-policy.html` fájl; a lapot a feltöltés előtt a KLHome oldalra kell másolni. A névjegyben a `laszlo.kovary@gmail.com` cím is ott van. A link az első képernyőn, a Beállításokban és a Súgóban is elérhető.
 
-Az első képernyő Elutasítom gombja nem lép ki. A rögzítés az Elfogadomig nem indul. When In Use mellett az Indítás előbb elmondja, miért kell a Mindig engedély a zárolt képernyőhöz; a csak az app használata közben ág Always kérés nélkül indul. Csökkentett pontosságnál a rögzítés a Pontos hely nélkül nem indul. Elutasított helyengedélynél a GPS fül a Helyzet beállítások képernyőre visz.
+Az első képernyő Elutasítom gombja nem lép ki. A rögzítés az Elfogadomig nem indul. A GTL csak „Az app használata közben” engedélyt kér, Mindig engedélyt soha. Az Indítás után a rögzítés zárolt képernyőn és háttérben is folytatódik a Leállításig. Csökkentett pontosságnál a rögzítés a Pontos hely nélkül nem indul. Elutasított helyengedélynél vagy kikapcsolt Pontos helynél az Indítás és a helyzetgomb bármelyik fülön figyelmeztetést ad Beállítások megnyitása gombbal; a GPS fül is elmagyarázza.
 
 A cél-szövegek angolul és magyarul:
 
 - Helyzet az app használata közben
-- Helyzet mindig és használat közben
 - Mozgás
 - Ideiglenes pontos hely a nyomvonalhoz (`PreciseRoute`)
 
@@ -229,6 +228,8 @@ A manifest régen csak a UserDefaults okot deklarálta (`CA92.1`). A helyindex a
 A manifestben maradt a pontos hely, app-funkció, nem kapcsolt, nem követésre. Mellé került a fájlidő `C617.1` és a lemezhely `E174.1`. Ez a felhasználói lépéseket nem változtatja. A feloldott MapLibre 6.31.0 keretrendszer saját `PrivacyInfo.xcprivacy` fájllal érkezik, ezért külön manifestet nem kellett beleírni.
 
 ### Mindig engedély
+
+2026 októberében kivezetve: a GTL már nem kér Mindig engedélyt (lásd [Review-javítások, 2026. október](#review-javítások-2026-október)). Az alábbi leírás a korábbi buildről szól.
 
 Régen, ha a hely csak az app használata közben volt engedélyezve, az Indítás azonnal a rendszerszintű Always párbeszédet nyitotta, és ugyanabban a lépésben elindította a munkamenetet. A felhasználó a párbeszéd előtt nem látott saját mondatot arról, hogy a zárolt képernyős rögzítéshez kell a Mindig.
 
@@ -294,6 +295,26 @@ Az adatvédelmi lap, a `docs/gtl-ios-private-policy.html`, angolul és magyarul 
 A fájlt újra át kell másolni a KLHome oldalra, különben az appbeli link a régebbi szöveget nyitja.
 
 A UI teszt a szerzői jogi sorban a 2014 helyett a 2026-ot keresi, a Beállításokban pedig a Használati mód címsort.
+
+### Review-javítások, 2026. október
+
+Ezek a változások a `gtl-ios-decline-fix-plan-hu.md` beküldés előtti átnézésére válaszolnak.
+
+- **Zárolt képernyős rögzítés „Az app használata közben” engedéllyel.** A GTL már nem kér Mindig engedélyt. Az Indításhoz „Az app használata közben” engedély és Pontos hely kell. Rögzítés közben a `CLBackgroundActivitySession` és a háttérbeli helyfrissítés zárolt képernyőn és háttérben is viszi a munkamenetet, a kék jelzővel, a Leállításig. A Leállítás lezárja a munkamenetet és a jelzőt. Munkamenet nélkül a térkép továbbra sem kér háttérfrissítést. Az app kényszerített bezárása leállítja a rögzítést, és az magától nem indul újra. A Mindig-lap, a cím alatti zárolási sor és a Mindig engedélyszöveg megszűnt. A Képernyő bekapcsolva naplózás közben már csak az automatikus elsötétítést akadályozza.
+- **Az Indítás soha nem marad néma.** Megtagadott vagy korlátozott helynél, vagy hiányzó Pontos helynél bármelyik fülön figyelmeztetés jön Beállítások megnyitása és Mégsem gombbal. A helyzetgomb ugyanezt adja. Új telepítésen az első Indítás engedélyt kér, és a megadása után második koppintás nélkül elindítja a rögzítést.
+- **Útvonal-adatbázis.** Ha az adatbázis nem nyílik meg, a gomb Indítás marad, egy figyelmeztetés kiírja, hogy a rögzítés nem indult, és a hibanapló rögzíti.
+- **Látható képernyők rejtett gesztusok helyett.** A hibanapló a Névjegy Hibanapló gombja. Egy útvonal tárolt pontjai a Mentett útvonalakból nyílnak: egy útvonal kijelölése, majd alul a Rögzített pontok. A hétszeres és a háromszoros koppintás megszűnt.
+- **A Névjegy** a készülék típusát és a rendszerverziót mutatja, nem a felhasználó által adott készüléknevet.
+- **Térkép.** Online módban az Apple térkép logója és a Legal link az alsó vezérlők fölött van, az üres felirat-chip eltűnt. Naplózás közben a gyenge GPS a Térkép fülön is figyelmeztetést ad a felső gombok alatt.
+- **Letöltés.** Az OSM-fájlok a `https://ftp-stud.hs-esslingen.de/Mirrors/download.mapsforge.org/maps/v5/` HTTPS-tükörről jönnek. A lista kontinensek szerint csoportosít, „EU” előtag nélkül, az országnevek a telefon nyelvén. A háttérletöltés munkamenete az app indulásakor jön létre, így a bezárt app alatt befejezett letöltés is a helyére kerül. Nem 2xx válasz vagy olvashatatlan térképfájl esetén „A letöltés nem sikerült.” üzenet jön, és a térképmappába nem kerül semmi.
+- **Szabad hely.** Ha a szabad hely nem olvasható, a letöltés nem indul. A mobilhálózati kérdés után a helyellenőrzés a pillanatnyi szabad hellyel újra lefut. A Turistautak csomag csak akkor bomlik ki, ha a kibontott méret és a 64 MB tartalék elfér; különben „Nincs elég szabad hely” üzenet jön, és a csomag törlődik.
+- **Eszközök.** Az `UIRequiredDeviceCapabilities` a `gps` és a `location-services` értéket tartalmazza, így az App Store GPS nélküli eszközön (például csak Wi-Fi-s iPaden) nem kínálja a GTL-t. A mobilhálózatos iPadekben van GPS, ezeken az iPhone-app kompatibilitási módban továbbra is telepíthető; minden iPadet csak a `telephony` zárna ki.
+- **Apple térkép jelölése.** A térkép alsó margója az alsó vezérlők (HUD, gombok, nyitott sebességskála) mért magasságát követi, így az Apple logó és a Legal link fölöttük marad. Szimulátorban, naplózás közben, nyitott sebességskálával ellenőrizve.
+- **Háttér-ellenőrzés szimulátorban.** „Az app használata közben” engedéllyel és szimulált útvonallal a háttérbe küldött rögzítés tovább írta a pontokat (15, 30 mp után 26, 60 mp után 36). A valódi iPhone-on zárolt képernyős séta ettől még kell.
+- **Harmadik fél.** Az első képernyő, a Súgó, a nyilatkozat és az áruházi szöveg kimondja, hogy a telefonon tárolt adat nem kerül harmadik félhez; csak a felhasználó által indított GPX- vagy KMZ-exporttal hagyja el a telefont. A térkép, a keresés, az útvonal és a cím kérése továbbra is az Apple-nek küldi a szükséges koordinátát.
+- **Export.** A „Mentve” csak akkor jelenik meg, ha a GPX vagy KMZ fájl létezik; különben a figyelmeztetés azt írja, hogy a fájl mentése nem sikerült.
+- **Magyar feliratok.** A főgombon Indítás / Leállítás, a mértékegységnél Metrikus / Angolszász, a térképen Távolság és Te.
+- **Áruház és adatvédelem.** A privacy manifest nem deklarál gyűjtött adatot, így az App Privacy válasz Data Not Collected. Az adatvédelmi nyilatkozat az új helyhasználatot és a tükröt írja le, és Google Fonts helyett rendszerbetűt használ. A lap fejléce az appot, az 1.0.1-es verziót és a kiadót mutatja, utolsó frissítési dátum nélkül; a Változások szakasz szerint a lap az adatkezelést módosító appverzió megjelenése előtt frissül. Van `AccentColor` (`#1F8A80`), a bundle név GPS Track Logger.
 
 ### Ami nem változott
 
@@ -416,7 +437,7 @@ Az út kék szaggatott vonal, külön a sebesség szerint színezett tracktől �
 
 ### Rögzítés zárolt képernyőn
 
-Az Indítás az előtérben rögzít, amint a hely engedélyezett. Zárolt képernyőn a nyomvonal csak akkor megy tovább, ha a Helyzet Mindig. A kék jelző a Stopig látszik. Ha a Mindig ugyanazon az Indításon jön meg, a háttérrögzítés azonnal bekapcsol. Az app használata közben a zárolás megállítja az új pontokat, és a cím alatt egy sor ezt kiírja. Beállítások → Rögzítés → Képernyő bekapcsolva naplózás közben csak a kijelzőt tartja ébren. Nem helyettesíti a Mindig engedélyt.
+Az Indítás az előtérben kezdi a rögzítést, „Az app használata közben” engedéllyel és Pontos hellyel. Amíg a munkamenet rögzít, egy `CLBackgroundActivitySession` és a háttérbeli helyfrissítés zárolt képernyőn és háttérben is viszi. A kék jelző a Leállításig látszik, és a Leállítás mindkettőt lezárja. A GTL nem kér Mindig engedélyt. Az app kényszerített bezárása leállítja a rögzítést, és az magától nem indul újra. Beállítások → Rögzítés → Képernyő bekapcsolva naplózás közben csak az automatikus elsötétítést akadályozza.
 
 ### Prevent Possible Crash
 
@@ -432,7 +453,7 @@ A színes vonal nem épül újra a teljes trackből minden pontnál. Azonos sebe
 
 A tárolt track továbbra is minden elfogadott pont, futásnál és túránál a kb. 0,5 m-enkénti pont is. A statisztika, a szintmetszet, a GPX és a KMZ ezt a teljes listát használja. A szintmetszet akkor készül, amikor az Útvonal fül látszik, és amikor a zárolt session visszajön az előtérbe, nem minden pontnál, amíg a Térkép fül van elöl. Minden új minta a futó összeget frissíti, ezért a térkép HUD távolsága és ideje bekapcsolt kijelzőn tovább ketyeg.
 
-Bekapcsolt kijelzőn a követő kamera változatlan: kb. 52 fokos dőlés, 1 m/s-tól GPS course, alatta iránytű, 5 fokos lépcső, és a teljes track a képen. Az Indítás, a Stop, a Mindig, a zárolt képernyő figyelmeztetése és az idle timer változatlan.
+Bekapcsolt kijelzőn a követő kamera változatlan: kb. 52 fokos dőlés, 1 m/s-tól GPS course, alatta iránytű, 5 fokos lépcső, és a teljes track a képen. Az Indítás, a Leállítás és az idle timer változatlan.
 
 ### App Store képek
 
@@ -441,6 +462,8 @@ Az App Store-nak nincs Google Play-s feature graphic helye (1024×500). Ennél a
 A review jegyzet, sorokkal és javítással: [gtl-ios-review-hu.md](gtl-ios-review-hu.md).
 
 Az elutasítást megelőző javítási terv, súlyozva (Critical–Low, a végén NON DECLINE): [gtl-ios-decline-fix-plan-hu.md](gtl-ios-decline-fix-plan-hu.md).
+
+A javítások után megmaradt elutasítási kockázatok becsült százalékkal, okkal és javítással: [gtl-ios-possible-decline-hu.md](gtl-ios-possible-decline-hu.md).
 
 #### Hova kerülnek
 
@@ -460,13 +483,13 @@ Egy lokalizációhoz 1–10 képernyőkép kell. Itt nyolc van, állóban, mert 
 3. `03-gps.png` — GPS: szélesség, hosszúság, pontosság, magasság, a fix kora.
 4. `04-compass.png` — MAG / TRUE és a számlap.
 5. `05-offline-maps.png` — Offline térképek: Turistautak.hu és az OpenStreetMap országlistája.
-6. `06-saved-tracks.png` — Mentett útvonalak az útvonal kis rajzával, távolsággal, idővel, átlag- és csúcssebességgel, alul Térképen, GPX, KMZ, Törlés.
+6. `06-saved-tracks.png` — Mentett útvonalak az útvonal kis rajzával, távolsággal, idővel, átlag- és csúcssebességgel, és a nyitott alsó menü: Törlés, KMZ, GPX, Rögzített pontok.
 7. `07-settings.png` — Beállítások: használati mód és mértékegység.
 8. `08-about.png` — Névjegy.
 
 Minden kép a futó app felvétele (angol felület), rajzolt telefonkeretben, sötét háttéren, fölötte angol cím és alcím. Egy készlet van; a magyar készlethez magyar felületű felvételek kellenek.
 
-A `05-offline-maps.png` a C1 javítás után készült, világos módú felvételből: a képernyő színei a többi kép sötét módú színeire vannak átszínezve (háttér, kártyák, szöveg, gombok), a tartalom változatlan.
+A `05-offline-maps.png` (kontinens-csoportok, „EU” előtag nélkül) és a `06-saved-tracks.png` (nyitott alsó menü a Rögzített pontok gombbal) 2026. október 3-án újra elkészült, világos módú felvételből: a képernyő színei a többi kép sötét módú színeire vannak átszínezve (háttér, kártyák, szöveg, gombok), a tartalom változatlan.
 
 A felvételek 739×1600 pixelesek voltak, kb. 1,3-szeres nagyítással kerültek a képre; teljes felbontású felvételből élesebb lenne. A `02-route.png` és a `04-compass.png` felvételén látszott a telefon széle; ez le van vágva, a hiányzó sáv pótolva. A `03-gps.png` képen és a feature graphicon a koordináta 48.399787° N, 21.654028° E (Sátoraljaújhely, Kazinczy Ferenc utca 22.). A magasságadatok és a `01-map.png` térképe a valódi felvételből maradtak.
 
