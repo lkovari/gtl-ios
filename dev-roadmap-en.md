@@ -57,6 +57,8 @@ Ordered by value: what you see on every recording first, what you look at once a
 
 ### 1. Stationary speed shows 0 on the HUD
 
+**Status: implemented (4 October 2026).** `StationarySpeedGate` in `gtl/Engine/EngineDisplay.swift`, `RecordedFix.speedAccuracy`, `TrackerModel.displaySpeedMps`; used by the HUD, the speed legend highlight, and the Route tab's live speed. Tests in `gtlTests/ThemeAndSpeedTests.swift`. The Live Activity (item 3) should read the same value.
+
 Value: high — the instrument shows movement while standing still · Effort: about 1 day · Wave 1
 
 **Why.** The HUD rounds the raw `CLLocation.speed` (`model.speedMps` → `Units.hudSpeedNumber` in `gtl/UI/MapViews.swift`). Indoors, with a still phone, Doppler noise shows a few km/h. A fixed km/h threshold would cut slow walking and let a larger indoor spike through.
@@ -77,6 +79,8 @@ Value: high — the instrument shows movement while standing still · Effort: ab
 **Permissions and declarations.** No new permission or declaration. `speedAccuracy` is part of the `CLLocation` delivered under the existing location permission.
 
 ### 2. Dark offline map and in-app theme choice
+
+**Status: implemented (4 October 2026), with one change to the plan.** Instead of System / Light / Dark, Settings → Theme has **Auto theme change** (on by default): light between dawn and dusk at the current position, dark outside it, from civil twilight (sun at −6°) computed on the phone (`SolarDaylight`). With it off, Light or Dark is chosen by hand. Without a known position, auto follows the iPhone setting, which keeps the earlier behavior. The dark offline palette is `gtl/Maps/OfflineMapPalette.swift`, applied at runtime; a light track edge keeps the speed colors visible on the dark map. Verified in the simulator: manual dark, and an automatic switch from light (Andorra, day) to dark (Tokyo, night) without a restart.
 
 Value: high — night riding, brand, the store screenshots are dark · Effort: 2–3 days · Wave 1
 
@@ -266,8 +270,8 @@ Version numbers are suggestions.
 
 | # | Item | Effort |
 | --- | --- | --- |
-| 1 | Stationary speed 0 on the HUD | about 1 day |
-| 2 | Dark offline map + System / Light / Dark | 2–3 days |
+| 1 | Stationary speed 0 on the HUD (done) | about 1 day |
+| 2 | Dark offline map + Auto (dawn/dusk) / Light / Dark (done) | 2–3 days |
 | 3 | Live Activity | 2–3 days |
 | — | New screenshot: dark HUD map while logging | 0.5 day |
 
@@ -305,8 +309,8 @@ Done when: a saved hairpin track shows left/right lean, old tracks included; whi
 
 | Rank | Feature | Value | Effort | Wave |
 | --- | --- | --- | --- | --- |
-| 1 | Stationary speed 0 on the HUD | high | ~1 day | 1 |
-| 2 | Dark offline map + theme choice | high | 2–3 days | 1 |
+| 1 | Stationary speed 0 on the HUD (done) | high | ~1 day | 1 |
+| 2 | Dark offline map + theme choice (done) | high | 2–3 days | 1 |
 | 3 | Live Activity | medium–high | 2–3 days | 1 |
 | 4 | Lean band (kinematic) | high (motorcycle) | 3–4 days | 2 |
 | 5 | Comet tail | medium | ~1 day | 2 |
@@ -359,7 +363,7 @@ Two items need new declarations: **3 (Live Activity)** and **8 (Postcard)**. Ite
 
 Wave 1:
 
-- Dark offline style: a hand-made dark JSON, or a programmatic recolor of the light layers? Separate tuning for Turistautak?
+- ~~Dark offline style~~ decided: a second palette applied to the existing layers at runtime; the same palette serves OSM and Turistautak.
 - Live Activity update interval within the ActivityKit budget (for example 5 seconds or every accepted point, whichever is less frequent).
 
 Wave 2:

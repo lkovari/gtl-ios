@@ -41,6 +41,7 @@ final class TrackerModel {
     var ellipsoidalAltitude: Double?
     var lastFixAt: Date?
     var speedMps: Float?
+    var displaySpeedMps: Float?
     var bearing: Float?
     var baroAltitude: Double?
     var pressureHpa: Float?
@@ -154,6 +155,10 @@ final class TrackerModel {
     private var latestEllipsoidalAltitude: Double?
     private var latestFixAt: Date?
     private var latestSpeed: Float?
+    private var latestDisplaySpeed: Float?
+    private var speedGate = StationarySpeedGate()
+    private var gateLatitude: Double?
+    private var gateLongitude: Double?
     private var latestBearing: Float?
     private var latestHeadingDegrees: Float?
     private var latestHeadingAccuracy: Int?
@@ -314,6 +319,7 @@ final class TrackerModel {
         ellipsoidalAltitude = latestEllipsoidalAltitude
         lastFixAt = latestFixAt
         speedMps = latestSpeed
+        displaySpeedMps = latestDisplaySpeed
         bearing = latestBearing
         headingDegrees = latestHeadingDegrees
         headingAccuracy = latestHeadingAccuracy
@@ -351,6 +357,21 @@ final class TrackerModel {
         if logging && travelDegrees != previous {
             followToken += 1
         }
+    }
+
+    var themeCoordinate: (latitude: Double, longitude: Double)? {
+        if let latitude, let longitude { return (latitude, longitude) }
+        return location.lastKnownCoordinate.map { ($0.latitude, $0.longitude) }
+    }
+
+    func themeChoice(at date: Date) -> ThemeChoice? {
+        let daylight = themeCoordinate.map { SolarDaylight.isDaylight(date: date, latitude: $0.latitude, longitude: $0.longitude) }
+        return ThemeResolver.choice(autoTheme: settings.autoTheme, manual: settings.manualTheme, daylight: daylight)
+    }
+
+    func civilTwilight(on date: Date) -> (dawn: Date?, dusk: Date?)? {
+        guard let coordinate = themeCoordinate else { return nil }
+        return SolarDaylight.civilTwilight(on: date, latitude: coordinate.latitude, longitude: coordinate.longitude, timeZone: .current)
     }
 
     func acceptDisclaimer() {
@@ -1179,6 +1200,18 @@ final class TrackerModel {
         ) else { return }
         let hasAccuracy = location.horizontalAccuracy >= 0
         guard FixAcceptance.hasUsableAccuracy(hasAccuracy, Float(location.horizontalAccuracy)) else { return }
+        var displacement: Double?
+        if let gateLatitude, let gateLongitude {
+            displacement = FixAcceptance.haversineMeters(gateLatitude, gateLongitude, location.latitude, location.longitude)
+        }
+        latestDisplaySpeed = speedGate.update(
+            speed: location.speed,
+            speedAccuracy: location.speedAccuracy,
+            displacement: displacement,
+            horizontalAccuracy: location.horizontalAccuracy
+        )
+        gateLatitude = location.latitude
+        gateLongitude = location.longitude
         latestLatitude = location.latitude
         latestLongitude = location.longitude
         latestAccuracy = Float(location.horizontalAccuracy)

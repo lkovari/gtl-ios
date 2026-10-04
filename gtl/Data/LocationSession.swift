@@ -63,6 +63,12 @@ final class LocationSession: NSObject, CLLocationManagerDelegate {
 
     var accuracyAuthorization: CLAccuracyAuthorization { manager.accuracyAuthorization }
 
+    var lastKnownCoordinate: CLLocationCoordinate2D? {
+        guard manager.authorizationStatus == .authorizedWhenInUse || manager.authorizationStatus == .authorizedAlways,
+              let location = manager.location else { return nil }
+        return location.coordinate
+    }
+
     func requestWhenInUse() { manager.requestWhenInUseAuthorization() }
 
     func ensurePreciseRoute() async -> Bool {
@@ -149,6 +155,7 @@ final class LocationSession: NSObject, CLLocationManagerDelegate {
                 altitude: location.altitude,
                 ellipsoidalAltitude: location.ellipsoidalAltitude,
                 speed: location.speed,
+                speedAccuracy: location.speedAccuracy,
                 course: location.course,
                 timestamp: location.timestamp
             )
@@ -184,6 +191,7 @@ struct RecordedFix: Sendable {
     var altitude: Double
     var ellipsoidalAltitude: Double
     var speed: Double
+    var speedAccuracy: Double
     var course: Double
     var timestamp: Date
 }

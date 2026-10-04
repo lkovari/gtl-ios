@@ -346,7 +346,7 @@ struct RouteTab: View {
     var body: some View {
         let ink = instrumentInk(scheme)
         let accent = liveAccent(scheme)
-        let speed = Units.formatSpeed(RouteTabSpeeds.instantMps(logging: model.logging, liveSpeedMps: model.speedMps) ?? 0, model.settings.measurementSystem)
+        let speed = Units.formatSpeed(RouteTabSpeeds.instantMps(logging: model.logging, liveSpeedMps: model.displaySpeedMps) ?? 0, model.settings.measurementSystem)
         let average = Units.formatSpeed(RouteTabSpeeds.averageMps(logging: model.logging, sessionAverageMps: model.stats.averageSpeedMps), model.settings.measurementSystem)
         let parts = MeasureParts(speed)
         GeometryReader { geo in

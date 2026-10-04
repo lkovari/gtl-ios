@@ -13,7 +13,6 @@ struct GtlApp: App {
     var body: some Scene {
         WindowGroup {
             RootView(model: model)
-                .preferredColorScheme(nil)
         }
     }
 }
@@ -32,14 +31,25 @@ struct RootView: View {
     @Bindable var model: TrackerModel
 
     var body: some View {
-        Group {
-            if model.settings.disclaimerAccepted {
-                TrackerScreen(model: model)
-            } else {
-                DisclaimerScreen(model: model)
+        TimelineView(.everyMinute) { context in
+            Group {
+                if model.settings.disclaimerAccepted {
+                    TrackerScreen(model: model)
+                } else {
+                    DisclaimerScreen(model: model)
+                }
             }
+            .tint(GtlColor.hudTeal)
+            .preferredColorScheme(Self.scheme(model.themeChoice(at: context.date)))
         }
-        .tint(GtlColor.hudTeal)
+    }
+
+    static func scheme(_ choice: ThemeChoice?) -> ColorScheme? {
+        switch choice {
+        case .light: return .light
+        case .dark: return .dark
+        case nil: return nil
+        }
     }
 }
 

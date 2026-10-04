@@ -57,6 +57,8 @@ Ezek az iOS-appban készen vannak, lent nem szerepelnek újra:
 
 ### 1. Álló helyzetben 0 a HUD sebessége
 
+**Állapot: megvalósítva (2026. október 4.).** `StationarySpeedGate` a `gtl/Engine/EngineDisplay.swift`-ben, `RecordedFix.speedAccuracy`, `TrackerModel.displaySpeedMps`; ezt használja a HUD, a jelmagyarázat kiemelése és az Útvonal fül élő sebessége. Tesztek: `gtlTests/ThemeAndSpeedTests.swift`. A Live Activity (3. tétel) ugyanezt az értéket olvassa majd.
+
 Érték: magas — a műszer álló helyzetben is mozgást mutat · Effort: kb. 1 nap · 1. hullám
 
 **Miért.** A HUD a nyers `CLLocation.speed` értéket kerekíti (`model.speedMps` → `Units.hudSpeedNumber`, `gtl/UI/MapViews.swift`). Bent, mozdulatlan telefonnál a Doppler-zaj néhány km/h-t mutat. Egy fix km/h-küszöb a lassú gyaloglást levágná, egy nagyobb benti tüskét átengedne.
@@ -77,6 +79,8 @@ A `RecordedFix` kap egy `speedAccuracy` mezőt (bővítés). A letárolt nyomvon
 **Engedélyek és deklarációk.** Nincs új engedély és deklaráció. A `speedAccuracy` a meglévő helyengedéllyel érkező `CLLocation` része.
 
 ### 2. Sötét offline térkép és téma-választó az appban
+
+**Állapot: megvalósítva (2026. október 4.), egy eltéréssel a tervtől.** Rendszer / Világos / Sötét helyett a Beállítások → Téma csoportban **Automatikus témaváltás** van (alapból bekapcsolva): a pillanatnyi helyzet szerinti pirkadat és alkonyat között világos, azon kívül sötét, a telefonon számolt polgári szürkület (a nap −6°-on) alapján (`SolarDaylight`). Kikapcsolva kézzel választható a Világos vagy a Sötét. Ismeretlen helyzetnél az automatikus mód az iPhone beállítását követi, ami megtartja a korábbi működést. A sötét offline paletta a `gtl/Maps/OfflineMapPalette.swift`, futás közben alkalmazva; sötét térképen a nyomvonal világos szegélye tartja láthatóan a sebességszíneket. Szimulátorban ellenőrizve: kézi sötét, és automatikus váltás világosról (Andorra, nappal) sötétre (Tokió, éjjel) újraindítás nélkül.
 
 Érték: magas — éjszakai motorozás, márka, az áruházi képek sötétek · Effort: 2–3 nap · 1. hullám
 
@@ -266,8 +270,8 @@ A verziószámok javaslatok.
 
 | # | Tétel | Effort |
 | --- | --- | --- |
-| 1 | Álló helyzetben 0 a HUD-on | kb. 1 nap |
-| 2 | Sötét offline térkép + Rendszer / Világos / Sötét | 2–3 nap |
+| 1 | Álló helyzetben 0 a HUD-on (kész) | kb. 1 nap |
+| 2 | Sötét offline térkép + Automatikus (pirkadat/alkonyat) / Világos / Sötét (kész) | 2–3 nap |
 | 3 | Live Activity | 2–3 nap |
 | — | Új képernyőkép: sötét HUD-os térkép naplózás közben | 0,5 nap |
 
@@ -305,8 +309,8 @@ Kész, ha: egy mentett szerpentinen látszik a bal/jobb dőlés, a régi útvona
 
 | Rang | Funkció | Érték | Effort | Hullám |
 | --- | --- | --- | --- | --- |
-| 1 | Álló helyzetben 0 a HUD-on | magas | ~1 nap | 1 |
-| 2 | Sötét offline térkép + téma-választó | magas | 2–3 nap | 1 |
+| 1 | Álló helyzetben 0 a HUD-on (kész) | magas | ~1 nap | 1 |
+| 2 | Sötét offline térkép + téma-választó (kész) | magas | 2–3 nap | 1 |
 | 3 | Live Activity | közepes–magas | 2–3 nap | 1 |
 | 4 | Dőlésszalag (kinematikai) | magas (motor) | 3–4 nap | 2 |
 | 5 | Üstökösfarok | közepes | ~1 nap | 2 |
@@ -359,7 +363,7 @@ Két tétel jár új jelöléssel: a **3. (Live Activity)** és a **8. (Képesla
 
 1. hullám:
 
-- Sötét offline stílus: kézzel írt sötét JSON, vagy a világos rétegek programozott átszínezése? Külön hangolás a Turistautakhoz?
+- ~~Sötét offline stílus~~ eldöntve: második paletta a meglévő rétegekre, futás közben alkalmazva; ugyanaz a paletta szolgálja az OSM-et és a Turistautakat.
 - A Live Activity frissítési gyakorisága az ActivityKit keretén belül (például 5 másodperc vagy minden elfogadott pont, amelyik ritkább).
 
 2. hullám:

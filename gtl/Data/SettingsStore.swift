@@ -30,6 +30,8 @@ struct GtlSettings: Equatable {
     var mapLayer: MapLayer
     var osm: OsmRenderOptions
     var tuhu: TuhuRenderOptions
+    var autoTheme: Bool
+    var manualTheme: ThemeChoice
 
     static func placeholder(usage: UsageType = .TWO_WHEELERS) -> GtlSettings {
         let smoothing = usage.defaultSmoothing()
@@ -63,7 +65,9 @@ struct GtlSettings: Equatable {
             autoCalibrateBaroEnabled: true,
             mapLayer: .standard,
             osm: OsmRenderOptions.defaults(usage: usage),
-            tuhu: TuhuRenderOptions.defaults()
+            tuhu: TuhuRenderOptions.defaults(),
+            autoTheme: true,
+            manualTheme: .light
         )
     }
 
@@ -140,6 +144,8 @@ final class SettingsStore {
         settings.tuhu.parks = bool("tuhu_parks", settings.tuhu.parks)
         settings.tuhu.urbanPoi = bool("tuhu_urban", settings.tuhu.urbanPoi)
         settings.tuhu.hillshading = bool("tuhu_hills", settings.tuhu.hillshading)
+        settings.autoTheme = bool("auto_theme", settings.autoTheme)
+        if let raw = defaults.string(forKey: "manual_theme"), let theme = ThemeChoice(rawValue: raw) { settings.manualTheme = theme }
         return settings
     }
 
@@ -185,6 +191,8 @@ final class SettingsStore {
         defaults.set(settings.tuhu.parks, forKey: "tuhu_parks")
         defaults.set(settings.tuhu.urbanPoi, forKey: "tuhu_urban")
         defaults.set(settings.tuhu.hillshading, forKey: "tuhu_hills")
+        defaults.set(settings.autoTheme, forKey: "auto_theme")
+        defaults.set(settings.manualTheme.rawValue, forKey: "manual_theme")
     }
 
     private func bool(_ key: String, _ fallback: Bool) -> Bool {

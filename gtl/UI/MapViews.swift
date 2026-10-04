@@ -189,7 +189,8 @@ struct MapTab: View {
                 routeCount: model.routeCoordinates.count,
                 travelDegrees: model.travelDegrees,
                 tiltResetToken: model.tiltResetToken,
-                logging: model.logging
+                logging: model.logging,
+                dark: scheme == .dark
             )
         } else {
             OnlineMap(model: model, mapScope: mapScope, bottomInset: bottomControlsHeight + 18)
@@ -254,7 +255,7 @@ struct MapTab: View {
     }
 
     private var activeSpeedBin: Int? {
-        guard model.selectedSessionId == nil, let speed = model.speedMps, speed.isFinite, speed >= 0 else { return nil }
+        guard model.selectedSessionId == nil, let speed = model.displaySpeedMps, speed.isFinite, speed >= 0 else { return nil }
         return SpeedColorScale.bin(speedMps: speed, usage: model.settings.usageType)
     }
 
@@ -372,7 +373,7 @@ struct MapTab: View {
     }
 
     private func hudPanel(compact: Bool, distance: String?) -> some View {
-        let speed = model.speedMps.map { Units.hudSpeedNumber($0, model.settings.measurementSystem) } ?? "—"
+        let speed = model.displaySpeedMps.map { Units.hudSpeedNumber($0, model.settings.measurementSystem) } ?? "—"
         let accuracy = model.accuracy.map { String(format: "%.1f m", $0) } ?? "—"
         return VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .bottom, spacing: 12) {
@@ -419,7 +420,7 @@ struct MapTab: View {
     }
 
     private var hudSpeedColor: Color {
-        guard model.selectedSessionId == nil, let speed = model.speedMps, speed.isFinite, speed >= 0 else {
+        guard model.selectedSessionId == nil, let speed = model.displaySpeedMps, speed.isFinite, speed >= 0 else {
             return GtlColor.hudCyan
         }
         return SpeedColor.at(SpeedColorScale.bin(speedMps: speed, usage: model.settings.usageType)).color
@@ -751,6 +752,10 @@ final class OfflineLabelView: UIView {
         didSet { setNeedsDisplay() }
     }
 
+    var halo = UIColor(white: 1, alpha: 0.94) {
+        didSet { setNeedsDisplay() }
+    }
+
     override init(frame: CGRect) {
         super.init(frame: frame)
         isOpaque = false
@@ -768,7 +773,7 @@ final class OfflineLabelView: UIView {
             let attributes: [NSAttributedString.Key: Any] = [
                 .font: mark.font,
                 .foregroundColor: mark.color,
-                .strokeColor: UIColor(white: 1, alpha: 0.94),
+                .strokeColor: halo,
                 .strokeWidth: -2.6
             ]
             let size = (mark.text as NSString).size(withAttributes: attributes)
@@ -831,6 +836,7 @@ struct OfflineMapRepresentable: UIViewRepresentable {
     var travelDegrees: Double?
     var tiltResetToken: Int
     var logging: Bool
+    var dark: Bool
 
     func makeCoordinator() -> Coordinator { Coordinator(model: model) }
 
@@ -844,6 +850,7 @@ struct OfflineMapRepresentable: UIViewRepresentable {
         map.isScrollEnabled = true
         let labels = OfflineLabelView(frame: map.bounds)
         labels.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        labels.halo = OfflineMapPalette.palette(dark: dark).labelHalo
         map.addSubview(labels)
         context.coordinator.labels = labels
         context.coordinator.mapView = map
@@ -869,6 +876,7 @@ struct OfflineMapRepresentable: UIViewRepresentable {
         context.coordinator.tiltResetToken = tiltResetToken
         context.coordinator.logging = logging
         context.coordinator.mapView = map
+        context.coordinator.applyTheme(dark: dark, map: map)
         context.coordinator.place(map)
         context.coordinator.applyZoom(map)
         context.coordinator.applyFocus(map)
@@ -917,7 +925,63 @@ struct OfflineMapRepresentable: UIViewRepresentable {
         private var cachedZoom = Int.min
         private var cachedAnchors: [LabelAnchor] = []
         private var overlayStamp: OverlayStamp?
+        private var palette = OfflineMapPalette.day
+        private var paletteDark = false
         init(model: TrackerModel) { self.model = model }
+
+        func applyTheme(dark: Bool, map: MLNMapView) {
+            guard dark != paletteDark else { return }
+            paletteDark = dark
+            palette = OfflineMapPalette.palette(dark: dark)
+            labels?.halo = palette.labelHalo
+            anchorsDirty = true
+            guard let style = map.style, source != nil else { return }
+            applyPalette(style)
+            redrawLabels(map)
+        }
+
+        private func fillColors() -> [String: UIColor] {
+            [
+                "fill-water": palette.water,
+                "fill-land": palette.land,
+                "fill-park": palette.park,
+                "fill-building": palette.building
+            ]
+        }
+
+        private func lineColors() -> [String: UIColor] {
+            [
+                "line-contour": palette.contour,
+                "line-border": palette.border,
+                "line-waterway": palette.waterway,
+                "line-casing": palette.casing,
+                "line-road": palette.road,
+                "line-tertiary": palette.tertiary,
+                "line-secondary": palette.secondary,
+                "line-primary": palette.primary,
+                "line-motorway": palette.motorway,
+                "line-path": palette.path,
+                "line-cycle": palette.cycle,
+                "line-emphasis": palette.emphasis,
+                "line-blaze": palette.blaze,
+                "line-track-casing": palette.trackCasing
+            ]
+        }
+
+        private func applyPalette(_ style: MLNStyle) {
+            (style.layer(withIdentifier: "background") as? MLNBackgroundStyleLayer)?.backgroundColor = NSExpression(forConstantValue: palette.background)
+            for (identifier, color) in fillColors() {
+                (style.layer(withIdentifier: identifier) as? MLNFillStyleLayer)?.fillColor = NSExpression(forConstantValue: color)
+            }
+            (style.layer(withIdentifier: "fill-building") as? MLNFillStyleLayer)?.fillOutlineColor = NSExpression(forConstantValue: palette.buildingOutline)
+            for (identifier, color) in lineColors() {
+                (style.layer(withIdentifier: identifier) as? MLNLineStyleLayer)?.lineColor = NSExpression(forConstantValue: color)
+            }
+            if let points = style.layer(withIdentifier: "points") as? MLNCircleStyleLayer {
+                points.circleColor = NSExpression(forConstantValue: palette.poi)
+                points.circleStrokeColor = NSExpression(forConstantValue: palette.poiStroke)
+            }
+        }
 
         @objc func handleMapTap(_ gesture: UITapGestureRecognizer) {
             guard let map = mapView else { return }
@@ -983,34 +1047,42 @@ struct OfflineMapRepresentable: UIViewRepresentable {
             let source = MLNShapeSource(identifier: "offline", shape: empty, options: nil)
             style.addSource(source)
             self.source = source
-            addFill(style, "fill-water", "water", UIColor(red: 0.67, green: 0.83, blue: 0.87, alpha: 1), 1)
-            addFill(style, "fill-land", "land", UIColor(red: 0.76, green: 0.86, blue: 0.70, alpha: 1), 0.9)
-            addFill(style, "fill-park", "park", UIColor(red: 0.68, green: 0.84, blue: 0.62, alpha: 1), 0.95)
-            addFill(style, "fill-building", "building", UIColor(red: 0.86, green: 0.80, blue: 0.74, alpha: 1), 1, outline: UIColor(red: 0.62, green: 0.55, blue: 0.50, alpha: 1))
-            addLine(style, "line-contour", "contour", UIColor(red: 0.62, green: 0.48, blue: 0.36, alpha: 0.85), 1)
-            addLine(style, "line-border", "border", UIColor(red: 0.55, green: 0.35, blue: 0.62, alpha: 0.9), 1.6)
-            addLine(style, "line-waterway", "waterway", UIColor(red: 0.45, green: 0.68, blue: 0.78, alpha: 1), 1.6)
-            addLine(style, "line-casing", ["motorway", "primary", "secondary", "tertiary", "road"], UIColor(red: 0.55, green: 0.52, blue: 0.48, alpha: 1), 4.2)
-            addLine(style, "line-road", "road", UIColor(red: 1, green: 1, blue: 1, alpha: 1), 2.2)
-            addLine(style, "line-tertiary", "tertiary", UIColor(red: 1, green: 1, blue: 1, alpha: 1), 2.6)
-            addLine(style, "line-secondary", "secondary", UIColor(red: 0.98, green: 0.86, blue: 0.55, alpha: 1), 3.2)
-            addLine(style, "line-primary", "primary", UIColor(red: 0.98, green: 0.70, blue: 0.55, alpha: 1), 3.6)
-            addLine(style, "line-motorway", "motorway", UIColor(red: 0.91, green: 0.55, blue: 0.62, alpha: 1), 4.2)
-            addLine(style, "line-path", "path", UIColor(red: 0.55, green: 0.40, blue: 0.24, alpha: 1), 1.5)
-            addLine(style, "line-cycle", "cycle", UIColor(red: 0.16, green: 0.52, blue: 0.72, alpha: 1), 2.2)
-            addLine(style, "line-emphasis", "emphasis", UIColor(red: 0.77, green: 0.0, blue: 0.48, alpha: 1), 3.2)
-            addLine(style, "line-blaze", "blaze", UIColor(red: 0.12, green: 0.35, blue: 0.66, alpha: 1), 2.6)
+            (style.layer(withIdentifier: "background") as? MLNBackgroundStyleLayer)?.backgroundColor = NSExpression(forConstantValue: palette.background)
+            addFill(style, "fill-water", "water", palette.water, 1)
+            addFill(style, "fill-land", "land", palette.land, 0.9)
+            addFill(style, "fill-park", "park", palette.park, 0.95)
+            addFill(style, "fill-building", "building", palette.building, 1, outline: palette.buildingOutline)
+            addLine(style, "line-contour", "contour", palette.contour, 1)
+            addLine(style, "line-border", "border", palette.border, 1.6)
+            addLine(style, "line-waterway", "waterway", palette.waterway, 1.6)
+            addLine(style, "line-casing", ["motorway", "primary", "secondary", "tertiary", "road"], palette.casing, 4.2)
+            addLine(style, "line-road", "road", palette.road, 2.2)
+            addLine(style, "line-tertiary", "tertiary", palette.tertiary, 2.6)
+            addLine(style, "line-secondary", "secondary", palette.secondary, 3.2)
+            addLine(style, "line-primary", "primary", palette.primary, 3.6)
+            addLine(style, "line-motorway", "motorway", palette.motorway, 4.2)
+            addLine(style, "line-path", "path", palette.path, 1.5)
+            addLine(style, "line-cycle", "cycle", palette.cycle, 2.2)
+            addLine(style, "line-emphasis", "emphasis", palette.emphasis, 3.2)
+            addLine(style, "line-blaze", "blaze", palette.blaze, 2.6)
             let points = MLNCircleStyleLayer(identifier: "points", source: source)
             points.predicate = NSPredicate(format: "paint == 'poi'")
-            points.circleColor = NSExpression(forConstantValue: UIColor(red: 0.12, green: 0.42, blue: 0.38, alpha: 1))
+            points.circleColor = NSExpression(forConstantValue: palette.poi)
             points.circleRadius = NSExpression(forConstantValue: 3.5)
-            points.circleStrokeColor = NSExpression(forConstantValue: UIColor.white)
+            points.circleStrokeColor = NSExpression(forConstantValue: palette.poiStroke)
             points.circleStrokeWidth = NSExpression(forConstantValue: 1)
             style.addLayer(points)
             let overlay = MLNShapeSource(identifier: "overlay", shape: MLNShapeCollectionFeature(shapes: []), options: nil)
             style.addSource(overlay)
             overlaySource = overlay
             style.setImage(Self.userArrow(), forName: "user-arrow")
+            let trackCasing = MLNLineStyleLayer(identifier: "line-track-casing", source: overlay)
+            trackCasing.predicate = NSPredicate(format: "paint == 'track'")
+            trackCasing.lineColor = NSExpression(forConstantValue: palette.trackCasing)
+            trackCasing.lineWidth = NSExpression(forConstantValue: 7)
+            trackCasing.lineCap = NSExpression(forConstantValue: "round")
+            trackCasing.lineJoin = NSExpression(forConstantValue: "round")
+            style.addLayer(trackCasing)
             let track = MLNLineStyleLayer(identifier: "line-track", source: overlay)
             track.predicate = NSPredicate(format: "paint == 'track'")
             track.lineColor = NSExpression(
@@ -1385,16 +1457,13 @@ struct OfflineMapRepresentable: UIViewRepresentable {
             if anchorsDirty || cachedZoom != zoom {
                 cachedZoom = zoom
                 anchorsDirty = false
-                cachedAnchors = offlineLabelAnchors(features: features, zoom: map.zoomLevel)
+                cachedAnchors = offlineLabelAnchors(features: features, zoom: map.zoomLevel, palette: palette)
             }
             labels.marks = projectLabels(cachedAnchors, map: map)
         }
     }
 }
 
-private let labelInk = UIColor(red: 0.17, green: 0.13, blue: 0.11, alpha: 1)
-private let labelRoad = UIColor(red: 0.22, green: 0.18, blue: 0.15, alpha: 1)
-private let labelWater = UIColor(red: 0.14, green: 0.34, blue: 0.46, alpha: 1)
 
 private func offlineLabelText(_ feature: MapFeature) -> String? {
     let name = (feature.name ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1454,7 +1523,7 @@ private func lineLabelRank(_ feature: MapFeature, zoom: Double) -> Int? {
 }
 
 @MainActor
-private func offlineLabelAnchors(features: [MapFeature], zoom: Double) -> [LabelAnchor] {
+private func offlineLabelAnchors(features: [MapFeature], zoom: Double, palette: OfflineMapPalette) -> [LabelAnchor] {
     var anchors: [LabelAnchor] = []
     for feature in features {
         if feature.tags["contour"] != nil || feature.tags["contour_ext"] != nil { continue }
@@ -1475,7 +1544,7 @@ private func offlineLabelAnchors(features: [MapFeature], zoom: Double) -> [Label
                 rotate: false,
                 rank: rank,
                 font: font,
-                color: labelInk
+                color: palette.labelInk
             ))
         case .line(let line):
             guard line.count >= 2, let rank = lineLabelRank(feature, zoom: zoom) else { continue }
@@ -1494,7 +1563,7 @@ private func offlineLabelAnchors(features: [MapFeature], zoom: Double) -> [Label
                     rotate: false,
                     rank: rank,
                     font: UIFont.systemFont(ofSize: 13, weight: .semibold),
-                    color: feature.category == "water" ? labelWater : labelInk
+                    color: feature.category == "water" ? palette.labelWater : palette.labelInk
                 ))
             } else {
                 var best = -1.0
@@ -1520,7 +1589,7 @@ private func offlineLabelAnchors(features: [MapFeature], zoom: Double) -> [Label
                     rotate: true,
                     rank: rank,
                     font: UIFont.systemFont(ofSize: zoom >= 15 ? 12 : 11, weight: .medium),
-                    color: water ? labelWater : labelRoad
+                    color: water ? palette.labelWater : palette.labelRoad
                 ))
             }
         }
