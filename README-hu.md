@@ -465,6 +465,8 @@ Az elutasítást megelőző javítási terv, súlyozva (Critical–Low, a végé
 
 A javítások után megmaradt elutasítási kockázatok becsült százalékkal, okkal és javítással: [gtl-ios-possible-decline-hu.md](gtl-ios-possible-decline-hu.md).
 
+Az 1.0.1 utáni fejlesztések hullámokban, csak olyanok, amelyek a mai működést nem rontják el és nem blokkolják: [dev-roadmap-hu.md](dev-roadmap-hu.md) ([angolul](dev-roadmap-en.md)).
+
 #### Hova kerülnek
 
 | Fájl | Méret | App Store Connect |

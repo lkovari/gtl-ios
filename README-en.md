@@ -459,6 +459,8 @@ The fix plan for likely App Store rejection causes, ranked Critical to Low with 
 
 The remaining rejection risks after those fixes, each with an estimated percentage, the reason, and the fix, are in [gtl-ios-possible-decline-hu.md](gtl-ios-possible-decline-hu.md) (Hungarian).
 
+What to build after 1.0.1, in waves, limited to features that do not break or block the current behavior: [dev-roadmap-en.md](dev-roadmap-en.md) ([Hungarian](dev-roadmap-hu.md)).
+
 #### Where each file goes
 
 | File | Size | App Store Connect |
