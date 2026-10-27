@@ -120,6 +120,7 @@
 				B10000000000000000000024 /* Sources */,
 				B10000000000000000000021 /* Frameworks */,
 				B10000000000000000000025 /* Resources */,
+				B10000000000000000000035 /* Inject Precise Route Usage */,
 			);
 			buildRules = (
 			);
@@ -254,6 +255,26 @@
 		};
 /* End PBXResourcesBuildPhase section */
 
+/* Begin PBXShellScriptBuildPhase section */
+		B10000000000000000000035 /* Inject Precise Route Usage */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+				"$(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)",
+			);
+			name = "Inject Precise Route Usage";
+			outputPaths = (
+				"$(DERIVED_FILE_DIR)/gtl-precise-route.stamp",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -euo pipefail\nPLIST=\"${TARGET_BUILD_DIR}/${INFOPLIST_PATH}\"\nif [ ! -f \"$PLIST\" ]; then\n  echo \"error: built Info.plist not found at $PLIST\" >&2\n  exit 1\nfi\n/usr/libexec/PlistBuddy -c \"Delete :NSLocationTemporaryUsageDescriptionDictionary\" \"$PLIST\" >/dev/null 2>&1 || true\n/usr/libexec/PlistBuddy -c \"Add :NSLocationTemporaryUsageDescriptionDictionary dict\" \"$PLIST\"\n/usr/libexec/PlistBuddy -c \"Add :NSLocationTemporaryUsageDescriptionDictionary:PreciseRoute string Precise location is required to record a usable route.\" \"$PLIST\"\ntouch \"${DERIVED_FILE_DIR}/gtl-precise-route.stamp\"\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
 /* Begin PBXSourcesBuildPhase section */
 		B10000000000000000000024 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
@@ -344,14 +365,18 @@
 				CURRENT_PROJECT_VERSION = 33;
 				DEVELOPMENT_TEAM = 2885GLR3V7;
 				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = gtl/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "GPS Track Logger";
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.navigation";
+				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "GTL uses your location to record the route and show it on the map. After you tap Start, recording continues while the screen is locked until you tap Stop.";
 				INFOPLIST_KEY_NSMotionUsageDescription = "GTL reads motion and barometric pressure to store lean angle and barometric altitude with the route.";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
+				INFOPLIST_KEY_UIRequiredDeviceCapabilities = "gps location-services";
 				INFOPLIST_KEY_UIRequiresFullScreen = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -384,14 +409,18 @@
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = 2885GLR3V7;
 				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = gtl/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "GPS Track Logger";
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.navigation";
+				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "GTL uses your location to record the route and show it on the map. After you tap Start, recording continues while the screen is locked until you tap Stop.";
 				INFOPLIST_KEY_NSMotionUsageDescription = "GTL reads motion and barometric pressure to store lean angle and barometric altitude with the route.";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
+				INFOPLIST_KEY_UIRequiredDeviceCapabilities = "gps location-services";
 				INFOPLIST_KEY_UIRequiresFullScreen = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
 				LD_RUNPATH_SEARCH_PATHS = (
